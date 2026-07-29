@@ -1,0 +1,3 @@
+{"id":"case-001","input":"Where is my package?","expected_label":"delivery"}
+{"id":"case-002","input":"Cancel my order.","expected_label":"cancellation"}
+{"id":"case-003","input":"I want my money back.","expected_label":"refund"}

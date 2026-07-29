@@ -1,0 +1,11 @@
+{
+  "role": "intent classifier",
+  "labels": [
+    "refund",
+    "delivery",
+    "cancellation"
+  ],
+  "output": {
+    "intent": "label"
+  }
+}

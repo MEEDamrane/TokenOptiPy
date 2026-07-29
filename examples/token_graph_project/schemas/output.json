@@ -1,0 +1,8 @@
+{
+  "system_instruction": "Return only a compact JSON object. The object must include intent, confidence, and reply. Never add markdown fences or explanations outside the JSON object.",
+  "schema": {
+    "intent": "delivery_status | cancellation | refund | damaged_item | address_change | other",
+    "confidence": "number between 0 and 1",
+    "reply": "short customer-facing answer"
+  }
+}

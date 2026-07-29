@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+title: TokenOptiPy
+message: "If you use TokenOptiPy in research, please cite this software."
+type: software
+authors:
+  - family-names: Amrane
+    given-names: Mohamed
+repository-code: "https://github.com/MEEDamrane/TokenOptiPy"
+url: "https://github.com/MEEDamrane/TokenOptiPy"
+version: 0.2.0
+date-released: 2026-07-29
+license: MIT

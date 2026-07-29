@@ -1,0 +1,27 @@
+name: Bug report
+description: Report incorrect behavior or a regression
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: textarea
+    attributes:
+      label: Description
+      description: What happened and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Reproduction
+      description: Include a minimal prompt with secrets and personal data removed.
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: TokenOptiPy version
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Python version and operating system
+    validations:
+      required: true
