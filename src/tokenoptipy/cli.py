@@ -43,7 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
             "Build a local token-flow graph, find prompt hotspots, and safely reduce prompt tokens."
         ),
     )
-    parser.add_argument("--version", action="version", version="TokenOptiPy 0.2.0")
+    parser.add_argument("--version", action="version",version="TokenOptiPy 0.2.2")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     build_command = subparsers.add_parser(
@@ -197,8 +197,8 @@ def run_hotspots(args: argparse.Namespace) -> int:
             if item.get("line"):
                 location += f":{item['line']}"
             print(
-                f"{rank}. {item['label']} [{item['type']}] — "
-                f"{item['static_tokens']} tokens — {location}"
+                f"{rank}. {item['label']} [{item['type']}] â€” "
+                f"{item['static_tokens']} tokens â€” {location}"
             )
             if item.get("dynamic_inputs"):
                 print(f"   Dynamic inputs: {', '.join(item['dynamic_inputs'])}")

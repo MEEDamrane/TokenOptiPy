@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tokenoptipy"
-version = "0.2.0"
-description = "Local token-flow graphs, prompt hotspot detection, and safe prompt optimization"
+version = "0.2.2"
+description = "Local token-flow graphs, prompt hotspot detection, safe prompt optimization, and MCP tools"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
@@ -20,6 +20,7 @@ keywords = [
   "graph",
   "static-analysis",
   "privacy",
+  "mcp",
 ]
 classifiers = [
   "Development Status :: 3 - Alpha",
@@ -32,7 +33,9 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
   "Topic :: Software Development :: Quality Assurance",
 ]
-dependencies = []
+dependencies = [
+  "mcp>=1.28,<2",
+]
 
 [project.optional-dependencies]
 tiktoken = ["tiktoken>=0.7"]
@@ -46,6 +49,7 @@ dev = [
 
 [project.scripts]
 tokenoptipy = "tokenoptipy.cli:main"
+tokenoptipy-mcp = "tokenoptipy.mcp_server:main"
 
 [project.urls]
 Homepage = "https://github.com/MEEDamrane/TokenOptiPy"

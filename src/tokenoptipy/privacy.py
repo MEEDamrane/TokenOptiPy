@@ -4,8 +4,11 @@ import re
 
 SECRET_PATTERNS = (
     re.compile(r"\bsk-[A-Za-z0-9_-]{16,}\b"),
+    re.compile(r"\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}\b"),
     re.compile(r"\b(?:gh[opusr]_[A-Za-z0-9]{20,})\b"),
+    re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}\b"),
     re.compile(r"\bAKIA[A-Z0-9]{16}\b"),
+    re.compile(r"\bAIza[A-Za-z0-9_-]{20,}\b"),
     re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]{12,}\b", re.IGNORECASE),
     re.compile(
         r"""(?:api[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret|password|secret)

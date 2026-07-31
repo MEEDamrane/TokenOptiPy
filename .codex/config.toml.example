@@ -1,0 +1,6 @@
+[mcp_servers.tokenoptipy]
+command = "python"
+args = ["-m", "tokenoptipy.mcp_server"]
+startup_timeout_sec = 20
+tool_timeout_sec = 120
+env = { TOKENOPTIPY_WORKSPACE_ROOT = "/absolute/path/to/project", TOKENOPTIPY_TRACE_FILE = "/absolute/path/to/project/.tokenoptipy/trace.jsonl", PYTHONUTF8 = "1", PYTHONUNBUFFERED = "1" }

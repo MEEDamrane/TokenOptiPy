@@ -64,6 +64,14 @@ class TokenGraph:
     edges: list[GraphEdge] = field(default_factory=list)
     findings: list[GraphFinding] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
+    _edge_keys: set[tuple[str, str, str]] = field(default_factory=set, init=False, repr=False)
+    _finding_keys: set[tuple[str, str, str]] = field(default_factory=set, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self._edge_keys.update((edge.source, edge.target, edge.type) for edge in self.edges)
+        self._finding_keys.update(
+            (item.code, item.node_id, item.message) for item in self.findings
+        )
 
     def add_node(self, node: GraphNode) -> None:
         existing = self.nodes.get(node.id)
@@ -72,17 +80,15 @@ class TokenGraph:
 
     def add_edge(self, edge: GraphEdge) -> None:
         key = (edge.source, edge.target, edge.type)
-        if key not in {(item.source, item.target, item.type) for item in self.edges}:
+        if key not in self._edge_keys:
             self.edges.append(edge)
+            self._edge_keys.add(key)
 
     def add_finding(self, finding: GraphFinding) -> None:
         key = (finding.code, finding.node_id, finding.message)
-        existing = {
-            (item.code, item.node_id, item.message)
-            for item in self.findings
-        }
-        if key not in existing:
+        if key not in self._finding_keys:
             self.findings.append(finding)
+            self._finding_keys.add(key)
 
     def to_dict(self) -> dict[str, Any]:
         return {
