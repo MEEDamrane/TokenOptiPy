@@ -7,16 +7,17 @@ from .analyzer import FILLER_PATTERNS
 
 
 def normalize_whitespace(text: str) -> str:
-    lines = [re.sub(r"[ \t]+", " ", line).strip() for line in text.splitlines()]
+    """Normalize harmless whitespace without changing indentation semantics."""
+    lines = [line.rstrip() for line in text.splitlines()]
     output: list[str] = []
     previous_blank = False
     for line in lines:
-        is_blank = not line
+        is_blank = not line.strip()
         if is_blank and previous_blank:
             continue
-        output.append(line)
+        output.append("" if is_blank else line)
         previous_blank = is_blank
-    return "\n".join(output).strip()
+    return "\n".join(output).strip("\n")
 
 
 def deduplicate_lines(text: str) -> str:

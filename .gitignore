@@ -1,5 +1,11 @@
+# Python
 __pycache__/
 *.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Tests, qualité et couverture
 .pytest_cache/
 .pytest-audit-tmp*/
 .tmp-audit-out*/
@@ -9,11 +15,39 @@ __pycache__/
 .ruff_cache/
 .coverage
 htmlcov/
-dist/
+
+# Builds Python
 build/
-*.egg-info/
-.venv/
+dist/
+
+# Node.js / extension VS Code
+node_modules/
+vscode-extension/node_modules/
+vscode-extension/*.vsix
+
+# TokenOptiPy
+.tokenoptipy/
+tokenoptipy-out/
+tokenoptipy-demo/
+
+# Configuration locale Codex
+.codex/config.toml
+
+# Autoriser le modèle de configuration public
+!.codex/config.toml.example
+
+# Secrets et environnement
 .env
-.DS_Store
+.env.*
+!.env.example
+.pypirc
+*.token
+*.secret
+
+# Fichiers générés
 report.json
 optimized.txt
+
+# Système
+.DS_Store
+Thumbs.db
