@@ -91,7 +91,7 @@ function serverDefinitions() {
       TOKENOPTIPY_WORKSPACE_ROOT: folder.uri.fsPath,
       TOKENOPTIPY_TRACE_FILE: tracePath(folder)
     },
-    version: '0.2.0'
+    version: '0.2.3'
   }));
 }
 

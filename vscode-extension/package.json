@@ -2,8 +2,8 @@
   "name": "tokenoptipy-vscode",
   "displayName": "TokenOptiPy MCP Traceability",
   "description": "Registers the local TokenOptiPy MCP server and shows tool traceability in one status bar item.",
-  "version": "0.2.2",
-  "publisher": "meedamrane",
+  "version": "0.2.3",
+  "publisher": "mohamedamrane",
   "license": "MIT",
   "engines": {
     "vscode": "^1.105.0"
