@@ -14,11 +14,13 @@ from .graph_engine import (
     compute_stats,
     graph_hotspots,
     load_graph,
+    prompt_flow,
     query_graph,
     resolve_node,
     shortest_path,
 )
 from .graph_reporting import write_graph_outputs
+from .integrations import AGENT_PATHS, CLIENT_PATHS, write_agent_instructions, write_mcp_configs
 from .optimizer import optimize_prompt
 from .reporting import format_summary, write_json_report
 from .validators import ValidationPolicy
@@ -46,7 +48,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--version",
         action="version",
-        version="TokenOptiPy 0.2.3",
+        version="TokenOptiPy 0.3.0",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -94,6 +96,10 @@ def build_parser() -> argparse.ArgumentParser:
     query_command.add_argument("--graph", default=DEFAULT_GRAPH_PATH)
     query_command.add_argument("--limit", type=int, default=20)
 
+    flow_command = subparsers.add_parser("prompt-flow", help="Show the complete flow for a prompt.")
+    flow_command.add_argument("prompt")
+    flow_command.add_argument("--graph", default=DEFAULT_GRAPH_PATH)
+
     count_parser = subparsers.add_parser("count", help="Count prompt tokens.")
     count_parser.add_argument("path", help="Text file path or - for stdin.")
     count_parser.add_argument("--backend", default="auto", choices=["auto", "simple", "tiktoken"])
@@ -127,6 +133,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Aggregate task quality, tokens, and latency from JSONL results.",
     )
     evaluate_parser.add_argument("path", help="Evaluation JSONL file.")
+
+    mcp_config = subparsers.add_parser("mcp-config", help="Generate MCP stdio client configurations.")
+    mcp_config.add_argument("path", nargs="?", default=".")
+    mcp_config.add_argument("--client", action="append", choices=["all", "codex", *CLIENT_PATHS], default=[])
+    mcp_config.add_argument("--python", default=sys.executable)
+
+    agent_init = subparsers.add_parser("agent-init", help="Generate instructions for coding agents.")
+    agent_init.add_argument("path", nargs="?", default=".")
+    agent_init.add_argument("--client", action="append", choices=["all", *AGENT_PATHS], default=[])
 
     return parser
 
@@ -288,6 +303,21 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.command == "evaluate":
             print_json(evaluate_jsonl(args.path).to_dict())
+            return 0
+        if args.command == "prompt-flow":
+            print_json(prompt_flow(load_graph(args.graph), args.prompt))
+            return 0
+
+        if args.command == "mcp-config":
+            clients = None if not args.client or "all" in args.client else args.client
+            for path in write_mcp_configs(args.path, clients=clients, python=args.python):
+                print(path)
+            return 0
+
+        if args.command == "agent-init":
+            clients = None if not args.client or "all" in args.client else args.client
+            for path in write_agent_instructions(args.path, clients=clients):
+                print(path)
             return 0
 
         if args.command == "compare":

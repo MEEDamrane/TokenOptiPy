@@ -2,7 +2,7 @@
   "name": "tokenoptipy-vscode",
   "displayName": "TokenOptiPy MCP Traceability",
   "description": "Registers the local TokenOptiPy MCP server and shows tool traceability in one status bar item.",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "publisher": "mohamedamrane",
   "license": "MIT",
   "engines": {
@@ -62,8 +62,20 @@
           "type": "boolean",
           "default": true,
           "description": "Maintain the TokenOptiPy MCP block in the workspace .codex/config.toml file."
+        },
+        "tokenoptipy.buildGraphAfterInspect": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically regenerate tokenoptipy-out/graph.html when inspect_workspace completes."
         }
       }
-    }
+    },
+    "commands": [
+      { "command": "tokenoptipy.configureMcpClients", "title": "TokenOptiPy: Configure MCP Clients" },
+      { "command": "tokenoptipy.buildGraph", "title": "TokenOptiPy: Build TokenGraph" },
+      { "command": "tokenoptipy.buildAndOpenGraph", "title": "TokenOptiPy: Build and Open TokenGraph" },
+      { "command": "tokenoptipy.openGraph", "title": "TokenOptiPy: Open TokenGraph" },
+      { "command": "tokenoptipy.showPromptFlow", "title": "TokenOptiPy: Show Prompt Flow" }
+    ]
   }
 }

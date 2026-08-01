@@ -6,7 +6,8 @@ from typing import Any
 
 from .analyzer import analyze_prompt
 from .counters import count_tokens
-from .graph_engine import build_token_graph, compute_stats, graph_hotspots, query_graph
+from .graph_engine import build_token_graph, compute_stats, graph_hotspots, prompt_flow, query_graph
+from .graph_reporting import write_graph_outputs
 from .trace import read_trace_events, trace_tool, workspace_root
 from .validators import ValidationPolicy, validate_candidate
 
@@ -59,6 +60,7 @@ def inspect_workspace(
     backend: str = "simple",
     limit: int = 10,
     maxFileSize: int = 1_000_000,
+    buildReport: bool = False,
 ) -> dict[str, Any]:
     root = workspace_root()
     project = resolve_workspace_path(projectPath)
@@ -84,6 +86,8 @@ def inspect_workspace(
             }
             for finding in graph.findings[:100]
         ]
+        graph.metadata["trace_id"] = trace.trace_id
+        outputs = write_graph_outputs(graph, project / "tokenoptipy-out") if buildReport else {}
         trace.set_summary(
             f"Scanned {stats['node_count']} nodes; {stats['finding_count']} findings; "
             f"{stats['total_static_prompt_tokens']} static prompt tokens"
@@ -94,6 +98,8 @@ def inspect_workspace(
             "stats": stats,
             "hotspots": hotspots,
             "findings": findings,
+            "report_paths": {name: _relative(path) for name, path in outputs.items()},
+            "trace_id": trace.trace_id,
             "privacy": "No source files or prompt bodies were returned.",
         }
 
@@ -200,4 +206,48 @@ def get_traceability(limit: int = 20) -> dict[str, Any]:
         return {
             "events": events,
             "privacy": "Trace events contain tool metadata only, never prompt bodies or tool arguments.",
+        }
+
+
+def get_prompt_flow(
+    prompt: str,
+    projectPath: str = ".",
+    backend: str = "simple",
+) -> dict[str, Any]:
+    root = workspace_root()
+    project = resolve_workspace_path(projectPath)
+    with trace_tool("get_prompt_flow", root=root) as trace:
+        graph = build_token_graph(project, backend=_backend(backend))
+        result = prompt_flow(graph, prompt)
+        result["trace_id"] = trace.trace_id
+        result["privacy"] = "No complete prompt body or sensitive tool argument was returned or logged."
+        trace.set_summary(
+            f"Prompt flow {result['node_id']}; {len(result['connected_nodes'])} connected nodes; "
+            f"{result['total_flow_tokens']} tokens"
+        )
+        return result
+
+
+def build_graph_report(
+    projectPath: str = ".",
+    outputPath: str = "tokenoptipy-out",
+    backend: str = "simple",
+) -> dict[str, Any]:
+    root = workspace_root()
+    project = resolve_workspace_path(projectPath)
+    output = resolve_workspace_path(outputPath, must_exist=False)
+    with trace_tool("build_graph_report", root=root) as trace:
+        graph = build_token_graph(project, backend=_backend(backend))
+        graph.metadata["trace_id"] = trace.trace_id
+        outputs = write_graph_outputs(graph, output)
+        stats = compute_stats(graph)
+        trace.set_summary(
+            f"Built graph report; {stats['node_count']} nodes; {stats['edge_count']} edges"
+        )
+        return {
+            "project_path": _relative(project),
+            "outputs": {name: _relative(path) for name, path in outputs.items()},
+            "stats": stats,
+            "trace_id": trace.trace_id,
+            "privacy": "Reports contain redacted previews only; complete prompt bodies are excluded.",
         }

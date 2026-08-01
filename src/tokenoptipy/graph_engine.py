@@ -261,6 +261,58 @@ def prompt_nodes(graph: TokenGraph) -> list[GraphNode]:
     return [node for node in graph.nodes.values() if node.type == "prompt"]
 
 
+def prompt_flow(graph: TokenGraph, prompt: str) -> dict[str, Any]:
+    """Return a privacy-safe, directed neighborhood and model-call paths for one prompt."""
+    node = resolve_node(graph, prompt)
+    if node.type != "prompt":
+        raise ValueError(f"Node is not a prompt: {node.id}")
+    incoming = [edge for edge in graph.edges if edge.target == node.id]
+    outgoing = [edge for edge in graph.edges if edge.source == node.id]
+    adjacent_ids = {edge.source for edge in incoming} | {edge.target for edge in outgoing}
+    connected = [graph.nodes[item] for item in sorted(adjacent_ids) if item in graph.nodes]
+
+    adjacency: dict[str, list[GraphEdge]] = defaultdict(list)
+    for edge in graph.edges:
+        adjacency[edge.source].append(edge)
+    queue: deque[tuple[str, list[str], list[str]]] = deque([(node.id, [node.id], [])])
+    visited = {node.id}
+    paths: list[dict[str, Any]] = []
+    model_calls: dict[str, GraphNode] = {}
+    while queue:
+        current, nodes_path, relations = queue.popleft()
+        for edge in adjacency[current]:
+            next_node = graph.nodes.get(edge.target)
+            if next_node is None:
+                continue
+            next_path = [*nodes_path, next_node.id]
+            next_relations = [*relations, edge.type]
+            if next_node.type == "model_call":
+                model_calls[next_node.id] = next_node
+                paths.append({"nodes": next_path, "relations": next_relations})
+            if next_node.id not in visited and len(next_path) <= 12:
+                visited.add(next_node.id)
+                queue.append((next_node.id, next_path, next_relations))
+
+    flow_ids = {node.id, *adjacent_ids}
+    for path in paths:
+        flow_ids.update(path["nodes"])
+    flow_nodes = [graph.nodes[item] for item in flow_ids if item in graph.nodes]
+    return {
+        "node_id": node.id,
+        "prompt_node": node.to_dict(),
+        "incoming_edges": [edge.to_dict() for edge in incoming],
+        "outgoing_edges": [edge.to_dict() for edge in outgoing],
+        "connected_nodes": [item.to_dict() for item in connected],
+        "relation_types": sorted({edge.type for edge in [*incoming, *outgoing]}),
+        "prompt_tokens": node.static_tokens,
+        "connected_node_tokens": {item.id: item.static_tokens for item in connected},
+        "total_flow_tokens": sum(item.static_tokens for item in flow_nodes),
+        "model_calls": [item.to_dict() for item in model_calls.values()],
+        "model_call_paths": paths,
+        "findings": [item.to_dict() for item in graph.findings if item.node_id in flow_ids],
+    }
+
+
 def add_duplicate_edges(graph: TokenGraph, threshold: float = 0.72) -> None:
     prompts = [node for node in prompt_nodes(graph) if node.static_tokens >= 20][:500]
     for index, left in enumerate(prompts):
