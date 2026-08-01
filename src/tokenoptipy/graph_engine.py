@@ -95,12 +95,32 @@ def should_extract_json_string(json_path: str, text: str) -> bool:
     return bool(PROMPT_KEY_RE.fullmatch(leaf)) or message_content or len(text) >= 120
 
 
-def should_extract_text_file(item: ProjectFile, text: str) -> bool:
+def should_extract_text_file(
+    item: ProjectFile,
+    text: str,
+    *,
+    include_documentation_prompts: bool = False,
+) -> bool:
     if item.extension in PROMPT_FILE_EXTENSIONS:
         return True
     if item.extension == ".txt":
         return True
     path_terms = re.split(r"[/_.-]", item.relative_path)
+    if item.extension == ".md":
+        in_prompt_directory = any(
+            part.lower() in {"prompt", "prompts"}
+            for part in Path(item.relative_path).parts[:-1]
+        )
+        prompt_named = any(
+            term in Path(item.relative_path).stem.lower()
+            for term in ("prompt", "system", "instruction", "agent", "template")
+        )
+        return bool(
+            include_documentation_prompts
+            or in_prompt_directory
+            or prompt_named
+            or PROMPT_CONTENT_RE.search(text)
+        )
     if any(PROMPT_KEY_RE.fullmatch(term) for term in path_terms if term):
         return True
     if PROMPT_CONTENT_RE.search(text):
@@ -119,6 +139,7 @@ def build_token_graph(
     backend: str = "simple",
     max_file_size: int = 1_000_000,
     include_hidden: bool = False,
+    include_documentation_prompts: bool = False,
 ) -> TokenGraph:
     project_root = Path(root).expanduser().resolve()
     files = scan_project(
@@ -194,7 +215,11 @@ def build_token_graph(
                 if extracted:
                     continue
 
-        if should_extract_text_file(item, text):
+        if should_extract_text_file(
+            item,
+            text,
+            include_documentation_prompts=include_documentation_prompts,
+        ):
             prompt = text_prompt_node(item, text, backend)
             graph.add_node(prompt)
             graph.add_edge(

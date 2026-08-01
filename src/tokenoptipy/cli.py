@@ -62,6 +62,11 @@ def build_parser() -> argparse.ArgumentParser:
     build_command.add_argument("--max-file-size", type=int, default=1_000_000)
     build_command.add_argument("--include-hidden", action="store_true")
     build_command.add_argument(
+        "--include-documentation-prompts",
+        action="store_true",
+        help="Treat Markdown documentation as prompt content.",
+    )
+    build_command.add_argument(
         "--update",
         action="store_true",
         help="Skip rebuilding when the project fingerprint has not changed.",
@@ -162,6 +167,7 @@ def run_build(args: argparse.Namespace) -> int:
         backend=args.backend,
         max_file_size=args.max_file_size,
         include_hidden=args.include_hidden,
+        include_documentation_prompts=args.include_documentation_prompts,
     )
     outputs = write_graph_outputs(graph, output_dir)
     state_path.write_text(

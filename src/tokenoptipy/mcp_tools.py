@@ -61,6 +61,7 @@ def inspect_workspace(
     limit: int = 10,
     maxFileSize: int = 1_000_000,
     buildReport: bool = False,
+    includeDocumentationPrompts: bool = False,
 ) -> dict[str, Any]:
     root = workspace_root()
     project = resolve_workspace_path(projectPath)
@@ -71,6 +72,7 @@ def inspect_workspace(
             project,
             backend=_backend(backend),
             max_file_size=safe_size,
+            include_documentation_prompts=includeDocumentationPrompts,
         )
         stats = compute_stats(graph)
         hotspots = graph_hotspots(graph, limit=safe_limit)
@@ -213,11 +215,16 @@ def get_prompt_flow(
     prompt: str,
     projectPath: str = ".",
     backend: str = "simple",
+    includeDocumentationPrompts: bool = False,
 ) -> dict[str, Any]:
     root = workspace_root()
     project = resolve_workspace_path(projectPath)
     with trace_tool("get_prompt_flow", root=root) as trace:
-        graph = build_token_graph(project, backend=_backend(backend))
+        graph = build_token_graph(
+            project,
+            backend=_backend(backend),
+            include_documentation_prompts=includeDocumentationPrompts,
+        )
         result = prompt_flow(graph, prompt)
         result["trace_id"] = trace.trace_id
         result["privacy"] = "No complete prompt body or sensitive tool argument was returned or logged."
@@ -232,12 +239,17 @@ def build_graph_report(
     projectPath: str = ".",
     outputPath: str = "tokenoptipy-out",
     backend: str = "simple",
+    includeDocumentationPrompts: bool = False,
 ) -> dict[str, Any]:
     root = workspace_root()
     project = resolve_workspace_path(projectPath)
     output = resolve_workspace_path(outputPath, must_exist=False)
     with trace_tool("build_graph_report", root=root) as trace:
-        graph = build_token_graph(project, backend=_backend(backend))
+        graph = build_token_graph(
+            project,
+            backend=_backend(backend),
+            include_documentation_prompts=includeDocumentationPrompts,
+        )
         graph.metadata["trace_id"] = trace.trace_id
         outputs = write_graph_outputs(graph, output)
         stats = compute_stats(graph)

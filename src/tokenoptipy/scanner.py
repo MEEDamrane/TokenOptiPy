@@ -37,6 +37,13 @@ DEFAULT_IGNORES = {
     "env",
 }
 
+IGNORED_DIRECTORY_SUFFIXES = (".egg-info", ".dist-info")
+
+
+def is_ignored_directory(name: str) -> bool:
+    """Return whether a path component is generated or dependency metadata."""
+    return name in DEFAULT_IGNORES or name.endswith(IGNORED_DIRECTORY_SUFFIXES)
+
 
 @dataclass(frozen=True)
 class ProjectFile:
@@ -76,7 +83,7 @@ def scan_project(
 
         relative = path.relative_to(project_root.parent if project_root.is_file() else project_root)
         parts = relative.parts
-        if any(part in DEFAULT_IGNORES for part in parts):
+        if any(is_ignored_directory(part) for part in parts[:-1]):
             continue
         if not include_hidden and any(part.startswith(".") for part in parts):
             continue
