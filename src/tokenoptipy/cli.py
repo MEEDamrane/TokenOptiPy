@@ -48,7 +48,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--version",
         action="version",
-        version="TokenOptiPy 0.3.0",
+        version="TokenOptiPy 0.4.0",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -61,6 +61,7 @@ def build_parser() -> argparse.ArgumentParser:
     build_command.add_argument("--backend", default="simple", choices=["simple", "auto", "tiktoken"])
     build_command.add_argument("--max-file-size", type=int, default=1_000_000)
     build_command.add_argument("--include-hidden", action="store_true")
+    build_command.add_argument("--language", default="auto", choices=["auto", "python", "javascript", "typescript", "all"])
     build_command.add_argument(
         "--include-documentation-prompts",
         action="store_true",
@@ -168,6 +169,7 @@ def run_build(args: argparse.Namespace) -> int:
         max_file_size=args.max_file_size,
         include_hidden=args.include_hidden,
         include_documentation_prompts=args.include_documentation_prompts,
+        language=args.language,
     )
     outputs = write_graph_outputs(graph, output_dir)
     state_path.write_text(

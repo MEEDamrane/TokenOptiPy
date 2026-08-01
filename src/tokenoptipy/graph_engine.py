@@ -9,7 +9,9 @@ from typing import Any
 
 from .counters import count_tokens
 from .graph_models import GraphEdge, GraphFinding, GraphNode, TokenGraph
+from .javascript_extractor import extract_javascript_file
 from .privacy import redact_preview
+from .project_config import LANGUAGES, detect_project, load_project_config
 from .python_extractor import (
     content_hash,
     extract_python_file,
@@ -140,12 +142,23 @@ def build_token_graph(
     max_file_size: int = 1_000_000,
     include_hidden: bool = False,
     include_documentation_prompts: bool = False,
+    language: str = "auto",
 ) -> TokenGraph:
     project_root = Path(root).expanduser().resolve()
+    if language not in LANGUAGES:
+        raise ValueError(f"Unsupported language: {language}. Choose auto, python, javascript, typescript, or all.")
+    config = load_project_config(project_root)
+    selected = set(config.languages) if language == "auto" and config.languages else ({language} if language not in {"auto", "all"} else set())
+    extensions = None
+    if selected:
+        mapping = {"python": {".py"}, "javascript": {".js", ".jsx", ".mjs", ".cjs"}, "typescript": {".ts", ".tsx"}}
+        extensions = set().union(*(mapping[item] for item in selected)) | {".txt", ".md", ".json", ".yaml", ".yml", ".prompt", ".jinja", ".jinja2", ".j2"}
     files = scan_project(
         project_root,
         max_file_size=max_file_size,
         include_hidden=include_hidden,
+        extensions=extensions,
+        exclude=set(config.exclude),
     )
     graph = TokenGraph(project_root=str(project_root))
     graph.metadata.update(
@@ -153,8 +166,16 @@ def build_token_graph(
             "backend": backend,
             "file_count": len(files),
             "project_fingerprint": project_fingerprint(files),
+            "parser": "Python ast + Tree-sitter JavaScript/TypeScript grammars",
+            "language": language,
         }
     )
+    graph.metadata.update(detect_project(project_root, {item.extension for item in files}))
+    graph.metadata["file_counts_by_language"] = {
+        "python": sum(item.extension == ".py" for item in files),
+        "javascript": sum(item.extension in {".js", ".jsx", ".mjs", ".cjs"} for item in files),
+        "typescript": sum(item.extension in {".ts", ".tsx"} for item in files),
+    }
 
     for item in files:
         graph.add_node(file_node(item))
@@ -168,6 +189,17 @@ def build_token_graph(
                 graph.add_node(node)
             for edge in extraction.edges:
                 graph.add_edge(edge)
+            continue
+
+        if item.extension in {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx"}:
+            js_extraction = extract_javascript_file(item.absolute_path, item.relative_path, backend=backend)
+            for node in js_extraction.nodes:
+                graph.add_node(node)
+            for edge in js_extraction.edges:
+                graph.add_edge(edge)
+            for module, _kind, _local in js_extraction.imports:
+                if module.startswith("."):
+                    _link_local_import(graph, project_root, item.relative_path, module)
             continue
 
         text = item.absolute_path.read_text(encoding="utf-8", errors="replace")
@@ -231,6 +263,21 @@ def build_token_graph(
     add_graph_findings(graph)
     graph.metadata.update(compute_stats(graph))
     return graph
+
+
+def _link_local_import(graph: TokenGraph, root: Path, source: str, module: str) -> None:
+    base = (root / Path(source).parent / module).resolve()
+    try:
+        base.relative_to(root)
+    except ValueError:
+        return
+    candidates = [base] if base.suffix else [base.with_suffix(ext) for ext in (".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs")]
+    candidates += [base / f"index{ext}" for ext in (".js", ".ts", ".jsx", ".tsx")]
+    for candidate in candidates:
+        if candidate.is_file():
+            target = candidate.relative_to(root).as_posix()
+            graph.add_edge(GraphEdge(f"file:{source}", f"file:{target}", "IMPORTS"))
+            return
 
 
 def link_file_prompt_references(graph: TokenGraph) -> None:

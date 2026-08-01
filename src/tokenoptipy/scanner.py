@@ -6,6 +6,12 @@ from pathlib import Path
 
 DEFAULT_EXTENSIONS = {
     ".py",
+    ".js",
+    ".jsx",
+    ".mjs",
+    ".cjs",
+    ".ts",
+    ".tsx",
     ".txt",
     ".md",
     ".json",
@@ -29,6 +35,19 @@ DEFAULT_IGNORES = {
     "build",
     "dist",
     "node_modules",
+    ".next",
+    ".nuxt",
+    ".output",
+    ".svelte-kit",
+    "coverage",
+    "out",
+    ".turbo",
+    ".cache",
+    ".parcel-cache",
+    ".vercel",
+    ".netlify",
+    "generated",
+    "vendor",
     "site-packages",
     "tokenoptipy-demo",
     "tokenoptipy-out",
@@ -68,6 +87,7 @@ def scan_project(
     max_file_size: int = 1_000_000,
     include_hidden: bool = False,
     extensions: set[str] | None = None,
+    exclude: set[str] | None = None,
 ) -> list[ProjectFile]:
     project_root = Path(root).expanduser().resolve()
     if not project_root.exists():
@@ -83,12 +103,23 @@ def scan_project(
 
         relative = path.relative_to(project_root.parent if project_root.is_file() else project_root)
         parts = relative.parts
-        if any(is_ignored_directory(part) for part in parts[:-1]):
+        exclusions = DEFAULT_IGNORES | (exclude or set())
+        if any(part in exclusions or part.endswith(IGNORED_DIRECTORY_SUFFIXES) for part in parts[:-1]):
             continue
         if not include_hidden and any(part.startswith(".") for part in parts):
             continue
         if path.suffix.lower() not in allowed:
             continue
+        lowered = path.name.lower()
+        if lowered in {"package-lock.json", "yarn.lock", "pnpm-lock.yaml"}:
+            continue
+        if lowered.endswith((".min.js", ".bundle.js", ".map")):
+            continue
+        if path.is_symlink():
+            try:
+                path.resolve().relative_to(project_root)
+            except ValueError:
+                continue
 
         size = path.stat().st_size
         if size > max_file_size:

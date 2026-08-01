@@ -2,7 +2,8 @@
   "name": "tokenoptipy-vscode",
   "displayName": "TokenOptiPy MCP Traceability",
   "description": "Registers the local TokenOptiPy MCP server and shows tool traceability in one status bar item.",
-  "version": "0.3.0",
+  "version": "0.4.0",
+  "icon": "images/tokenoptipy-icon.png",
   "publisher": "mohamedamrane",
   "license": "MIT",
   "engines": {
@@ -71,11 +72,30 @@
       }
     },
     "commands": [
-      { "command": "tokenoptipy.configureMcpClients", "title": "TokenOptiPy: Configure MCP Clients" },
-      { "command": "tokenoptipy.buildGraph", "title": "TokenOptiPy: Build TokenGraph" },
-      { "command": "tokenoptipy.buildAndOpenGraph", "title": "TokenOptiPy: Build and Open TokenGraph" },
-      { "command": "tokenoptipy.openGraph", "title": "TokenOptiPy: Open TokenGraph" },
-      { "command": "tokenoptipy.showPromptFlow", "title": "TokenOptiPy: Show Prompt Flow" }
+      {
+        "command": "tokenoptipy.configureMcpClients",
+        "title": "TokenOptiPy: Configure MCP Clients"
+      },
+      {
+        "command": "tokenoptipy.buildGraph",
+        "title": "TokenOptiPy: Build TokenGraph"
+      },
+      {
+        "command": "tokenoptipy.buildAndOpenGraph",
+        "title": "TokenOptiPy: Build and Open TokenGraph"
+      },
+      {
+        "command": "tokenoptipy.openGraph",
+        "title": "TokenOptiPy: Open TokenGraph"
+      },
+      {
+        "command": "tokenoptipy.showPromptFlow",
+        "title": "TokenOptiPy: Show Prompt Flow"
+      },
+      {
+        "command": "tokenoptipy.showDetectedLanguages",
+        "title": "TokenOptiPy: Show Detected Project Languages"
+      }
     ]
   }
 }

@@ -1,5 +1,7 @@
 # TokenOptiPy — TokenGraph Engine
 
+TokenOptiPy 0.4 analyzes Python, JavaScript, and TypeScript without executing project code, imports, package scripts, or dependencies. JavaScript and TypeScript use Tree-sitter with bundled platform wheels (`tree-sitter-javascript` and `tree-sitter-typescript`).
+
 <p align="center">
   <strong>See where tokens enter your Python LLM application.</strong>
 </p>

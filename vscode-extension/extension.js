@@ -95,7 +95,7 @@ function serverDefinitions() {
       TOKENOPTIPY_WORKSPACE_ROOT: folder.uri.fsPath,
       TOKENOPTIPY_TRACE_FILE: tracePath(folder)
     },
-    version: '0.3.0'
+    version: '0.4.0'
   }));
 }
 
@@ -198,7 +198,7 @@ async function configureMcpClients() {
 }
 
 async function buildGraph(folder = activeFolder(), notify = true) {
-  await runTokenOptiPy(folder, ['build', '.', '--output', 'tokenoptipy-out']);
+  await runTokenOptiPy(folder, ['build', '.', '--output', 'tokenoptipy-out', '--language', 'auto']);
   if (notify) vscode.window.showInformationMessage('TokenGraph built successfully.');
 }
 
@@ -222,6 +222,22 @@ async function showPromptFlow() {
   const { stdout } = await runTokenOptiPy(folder, ['prompt-flow', picked.node.id, '--graph', 'tokenoptipy-out/graph.json']);
   const document = await vscode.workspace.openTextDocument({ language: 'json', content: stdout });
   await vscode.window.showTextDocument(document, { preview: true });
+}
+
+async function showDetectedLanguages() {
+  const folder = activeFolder();
+  await buildGraph(folder, false);
+  const graph = JSON.parse(await fs.promises.readFile(path.join(folder.uri.fsPath, 'tokenoptipy-out', 'graph.json'), 'utf8'));
+  const meta = graph.metadata || {};
+  const counts = meta.file_counts_by_language || {};
+  const project = (meta.project_types || []).map((item) => item === 'nodejs' ? 'Node.js' : 'Python').join(' + ') || 'Unknown';
+  const calls = graph.nodes.filter((node) => node.type === 'model_call').map((node) => node.label.split('.')[0]);
+  await vscode.window.showQuickPick([
+    { label: `Project: ${project}`, description: (meta.detected_languages || []).join(', ') },
+    ...Object.entries(counts).map(([language, count]) => ({ label: language, description: `${count} files` })),
+    { label: 'LLM SDKs / clients', description: [...new Set(calls)].join(', ') || 'None detected' },
+    { label: 'Parser', description: meta.parser || 'Unknown' }
+  ], { title: 'TokenOptiPy detected project languages' });
 }
 
 async function openLatestTrace() {
@@ -289,6 +305,7 @@ async function activate(context) {
     vscode.commands.registerCommand('tokenoptipy.buildAndOpenGraph', () => buildAndOpenGraph().catch(showError)),
     vscode.commands.registerCommand('tokenoptipy.openGraph', () => openGraph().catch(showError)),
     vscode.commands.registerCommand('tokenoptipy.showPromptFlow', () => showPromptFlow().catch(showError)),
+    vscode.commands.registerCommand('tokenoptipy.showDetectedLanguages', () => showDetectedLanguages().catch(showError)),
     vscode.lm.registerMcpServerDefinitionProvider(PROVIDER_ID, {
       onDidChangeMcpServerDefinitions: definitionsChanged.event,
       provideMcpServerDefinitions: async () => serverDefinitions(),

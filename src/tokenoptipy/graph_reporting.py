@@ -146,6 +146,7 @@ function setMode(m){state.mode=m;localStorage.setItem('tokenoptipy.mode',m);rend
         .replace("__E__", str(stats["edge_count"]))
         .replace("__P__", str(stats["prompt_count"]))
         .replace("__T__", f"{stats['total_static_prompt_tokens']:,}".replace(",", " "))
+        .replace("TokenOptiPy 0.3.0", "TokenOptiPy 0.4.0")
         .replace("</body>", "<!-- edgeFilter compatibility marker --></body>")
     )
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0 — 2026-08-01
+
+- Add fully static JavaScript, JSX, ESM, CommonJS, TypeScript, and TSX analysis using bundled Tree-sitter grammar wheels.
+- Add automatic Python/Node.js project detection, language selection, safe exclusions, and validated `tokenoptipy.config.json` configuration.
+- Extend TokenGraph, MCP tools, reports, examples, tests, and the VS Code command center for hybrid projects.
+
 ## 0.3.0 — 2026-08-01
 
 - Added universal MCP and agent configuration generators.

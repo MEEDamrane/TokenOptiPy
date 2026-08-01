@@ -62,10 +62,12 @@ def inspect_workspace(
     maxFileSize: int = 1_000_000,
     buildReport: bool = False,
     includeDocumentationPrompts: bool = False,
+    language: str = "auto",
+    promptLimit: int | None = None,
 ) -> dict[str, Any]:
     root = workspace_root()
     project = resolve_workspace_path(projectPath)
-    safe_limit = min(max(int(limit), 1), 50)
+    safe_limit = min(max(int(promptLimit if promptLimit is not None else limit), 1), 50)
     safe_size = min(max(int(maxFileSize), 1_024), 20_000_000)
     with trace_tool("inspect_workspace", root=root) as trace:
         graph = build_token_graph(
@@ -73,6 +75,7 @@ def inspect_workspace(
             backend=_backend(backend),
             max_file_size=safe_size,
             include_documentation_prompts=includeDocumentationPrompts,
+            language=language,
         )
         stats = compute_stats(graph)
         hotspots = graph_hotspots(graph, limit=safe_limit)
@@ -97,6 +100,10 @@ def inspect_workspace(
         return {
             "project_path": _relative(project),
             "backend": graph.metadata.get("backend", backend),
+            "detected_languages": graph.metadata.get("detected_languages", []),
+            "project_types": graph.metadata.get("project_types", []),
+            "node_package_manager": graph.metadata.get("node_package_manager"),
+            "files_by_language": graph.metadata.get("file_counts_by_language", {}),
             "stats": stats,
             "hotspots": hotspots,
             "findings": findings,
@@ -182,6 +189,7 @@ def query_token_flow(
     projectPath: str = ".",
     backend: str = "simple",
     limit: int = 20,
+    language: str = "auto",
 ) -> dict[str, Any]:
     root = workspace_root()
     if not query.strip():
@@ -189,7 +197,7 @@ def query_token_flow(
     project = resolve_workspace_path(projectPath)
     safe_limit = min(max(int(limit), 1), 50)
     with trace_tool("query_token_flow", root=root) as trace:
-        graph = build_token_graph(project, backend=_backend(backend))
+        graph = build_token_graph(project, backend=_backend(backend), language=language)
         matches = query_graph(graph, query, limit=safe_limit)
         term_count = len(re.findall(r"[\w.-]+", query, flags=re.UNICODE))
         trace.set_summary(f"Queried {term_count} term(s); returned {len(matches)} graph matches")
@@ -216,6 +224,7 @@ def get_prompt_flow(
     projectPath: str = ".",
     backend: str = "simple",
     includeDocumentationPrompts: bool = False,
+    language: str = "auto",
 ) -> dict[str, Any]:
     root = workspace_root()
     project = resolve_workspace_path(projectPath)
@@ -224,6 +233,7 @@ def get_prompt_flow(
             project,
             backend=_backend(backend),
             include_documentation_prompts=includeDocumentationPrompts,
+            language=language,
         )
         result = prompt_flow(graph, prompt)
         result["trace_id"] = trace.trace_id
@@ -240,15 +250,18 @@ def build_graph_report(
     outputPath: str = "tokenoptipy-out",
     backend: str = "simple",
     includeDocumentationPrompts: bool = False,
+    language: str = "auto",
+    outputDir: str = "",
 ) -> dict[str, Any]:
     root = workspace_root()
     project = resolve_workspace_path(projectPath)
-    output = resolve_workspace_path(outputPath, must_exist=False)
+    output = resolve_workspace_path(outputDir or outputPath, must_exist=False)
     with trace_tool("build_graph_report", root=root) as trace:
         graph = build_token_graph(
             project,
             backend=_backend(backend),
             include_documentation_prompts=includeDocumentationPrompts,
+            language=language,
         )
         graph.metadata["trace_id"] = trace.trace_id
         outputs = write_graph_outputs(graph, output)
@@ -260,6 +273,9 @@ def build_graph_report(
             "project_path": _relative(project),
             "outputs": {name: _relative(path) for name, path in outputs.items()},
             "stats": stats,
+            "detected_languages": graph.metadata.get("detected_languages", []),
+            "project_types": graph.metadata.get("project_types", []),
+            "files_by_language": graph.metadata.get("file_counts_by_language", {}),
             "trace_id": trace.trace_id,
             "privacy": "Reports contain redacted previews only; complete prompt bodies are excluded.",
         }
