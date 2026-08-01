@@ -19,6 +19,8 @@ tokenoptipy-mcp
 | Tool | Purpose |
 |---|---|
 | `inspect_workspace` | Build an in-memory TokenGraph and return statistics, hotspots, and findings. |
+| `get_prompt_flow` | Return directed prompt relations, connected-node tokens, model calls, paths, findings, and a trace ID. |
+| `build_graph_report` | Generate local JSON, Markdown, and self-contained HTML graph reports. |
 | `analyze_prompt_file` | Analyze one workspace file without returning its prompt body. |
 | `validate_prompt_change` | Compare original and candidate prompts and enforce safety invariants. |
 | `query_token_flow` | Search prompts, context, files, functions, and model calls in the graph. |

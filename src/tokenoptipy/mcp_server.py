@@ -16,6 +16,14 @@ READ_ONLY = ToolAnnotations(
     openWorldHint=False,
 )
 
+LOCAL_REPORT_WRITE = ToolAnnotations(
+    title="TokenOptiPy local report generation",
+    readOnlyHint=False,
+    destructiveHint=False,
+    idempotentHint=True,
+    openWorldHint=False,
+)
+
 mcp = FastMCP(
     "TokenOptiPy",
     instructions=(
@@ -41,6 +49,7 @@ async def inspect_workspace(
     backend: str = "simple",
     limit: int = 10,
     maxFileSize: int = 1_000_000,
+    buildReport: bool = False,
 ) -> dict[str, Any]:
     return await asyncio.to_thread(
         mcp_tools.inspect_workspace,
@@ -48,6 +57,7 @@ async def inspect_workspace(
         backend,
         limit,
         maxFileSize,
+        buildReport,
     )
 
 
@@ -130,6 +140,34 @@ async def query_token_flow(
 )
 async def get_traceability(limit: int = 20) -> dict[str, Any]:
     return await asyncio.to_thread(mcp_tools.get_traceability, limit)
+
+
+@mcp.tool(
+    name="get_prompt_flow",
+    title="Get a prompt's complete token flow",
+    description="Return the prompt node, directed relations, connected nodes and tokens, model-call paths, findings, and trace ID without returning the complete prompt body.",
+    annotations=READ_ONLY,
+)
+async def get_prompt_flow(
+    prompt: str, projectPath: str = ".", backend: str = "simple"
+) -> dict[str, Any]:
+    return await asyncio.to_thread(mcp_tools.get_prompt_flow, prompt, projectPath, backend)
+
+
+@mcp.tool(
+    name="build_graph_report",
+    title="Build local TokenGraph reports",
+    description="Build graph.json, TOKEN_REPORT.md, and a self-contained graph.html inside the workspace.",
+    annotations=LOCAL_REPORT_WRITE,
+)
+async def build_graph_report(
+    projectPath: str = ".",
+    outputPath: str = "tokenoptipy-out",
+    backend: str = "simple",
+) -> dict[str, Any]:
+    return await asyncio.to_thread(
+        mcp_tools.build_graph_report, projectPath, outputPath, backend
+    )
 
 
 def main() -> None:

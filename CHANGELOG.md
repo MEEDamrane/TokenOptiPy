@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0 — 2026-08-01
+
+- Added universal MCP and agent configuration generators.
+- Added prompt-flow and graph-report MCP tools.
+- Rebuilt the self-contained TokenGraph UI and expanded the VS Code commands.
+
 ## Unreleased
 
 ### Fixed

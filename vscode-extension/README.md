@@ -17,6 +17,12 @@ The trace never stores prompt bodies, secrets, or tool arguments.
 ## Tools
 
 - `inspect_workspace`
+- `get_prompt_flow`
+- `build_graph_report`
+
+Commands: **Configure MCP Clients**, **Build TokenGraph**, **Build and Open TokenGraph**,
+**Open TokenGraph**, and **Show Prompt Flow**. Set `tokenoptipy.buildGraphAfterInspect` to
+regenerate `graph.html` automatically after a completed workspace inspection.
 - `analyze_prompt_file`
 - `validate_prompt_change`
 - `query_token_flow`

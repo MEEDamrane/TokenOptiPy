@@ -3,6 +3,9 @@
 const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
+const childProcess = require('child_process');
+const util = require('util');
+const execFile = util.promisify(childProcess.execFile);
 
 const PROVIDER_ID = 'tokenoptipy.mcp';
 const MANAGED_BEGIN = '# BEGIN TOKENOPTIPY MCP (managed by TokenOptiPy VS Code)';
@@ -14,6 +17,7 @@ let statusBar;
 let watchers = [];
 /** @type {vscode.EventEmitter<void> | undefined} */
 let definitionsChanged;
+let lastAutoBuildTrace = '';
 
 function configuration() {
   return vscode.workspace.getConfiguration('tokenoptipy');
@@ -91,7 +95,7 @@ function serverDefinitions() {
       TOKENOPTIPY_WORKSPACE_ROOT: folder.uri.fsPath,
       TOKENOPTIPY_TRACE_FILE: tracePath(folder)
     },
-    version: '0.2.3'
+    version: '0.3.0'
   }));
 }
 
@@ -168,6 +172,56 @@ async function refreshStatusBar() {
   tooltip.appendMarkdown('_The trace excludes prompts, secrets, and tool arguments._');
   statusBar.tooltip = tooltip;
   statusBar.command = 'tokenoptipy.openTrace';
+  if (latest.tool === 'inspect_workspace' && latest.status === 'completed' && latest.trace_id !== lastAutoBuildTrace && configuration().get('buildGraphAfterInspect', false)) {
+    lastAutoBuildTrace = latest.trace_id;
+    const folder = (vscode.workspace.workspaceFolders || []).find((item) => item.name === latest.folder);
+    if (folder) await buildGraph(folder, false);
+  }
+}
+
+function activeFolder() {
+  const folders = vscode.workspace.workspaceFolders || [];
+  if (!folders.length) throw new Error('Open a workspace folder first.');
+  return folders[0];
+}
+
+async function runTokenOptiPy(folder, args) {
+  const env = { ...process.env, TOKENOPTIPY_WORKSPACE_ROOT: folder.uri.fsPath, PYTHONUTF8: '1' };
+  return execFile(pythonPath(), ['-m', 'tokenoptipy', ...args], { cwd: folder.uri.fsPath, env, windowsHide: true });
+}
+
+async function configureMcpClients() {
+  const folder = activeFolder();
+  await runTokenOptiPy(folder, ['mcp-config', '.', '--client', 'all']);
+  await runTokenOptiPy(folder, ['agent-init', '.', '--client', 'all']);
+  vscode.window.showInformationMessage('TokenOptiPy MCP clients and agent instructions configured.');
+}
+
+async function buildGraph(folder = activeFolder(), notify = true) {
+  await runTokenOptiPy(folder, ['build', '.', '--output', 'tokenoptipy-out']);
+  if (notify) vscode.window.showInformationMessage('TokenGraph built successfully.');
+}
+
+async function openGraph(folder = activeFolder()) {
+  const uri = vscode.Uri.file(path.join(folder.uri.fsPath, 'tokenoptipy-out', 'graph.html'));
+  try { await vscode.workspace.fs.stat(uri); } catch { throw new Error('Build the TokenGraph first.'); }
+  await vscode.env.openExternal(uri);
+}
+
+async function buildAndOpenGraph() {
+  const folder = activeFolder(); await buildGraph(folder, false); await openGraph(folder);
+}
+
+async function showPromptFlow() {
+  const folder = activeFolder();
+  const graphPath = path.join(folder.uri.fsPath, 'tokenoptipy-out', 'graph.json');
+  const graph = JSON.parse(await fs.promises.readFile(graphPath, 'utf8'));
+  const prompts = graph.nodes.filter((node) => node.type === 'prompt');
+  const picked = await vscode.window.showQuickPick(prompts.map((node) => ({ label: node.label, description: `${node.static_tokens || 0} tokens`, node })));
+  if (!picked) return;
+  const { stdout } = await runTokenOptiPy(folder, ['prompt-flow', picked.node.id, '--graph', 'tokenoptipy-out/graph.json']);
+  const document = await vscode.workspace.openTextDocument({ language: 'json', content: stdout });
+  await vscode.window.showTextDocument(document, { preview: true });
 }
 
 async function openLatestTrace() {
@@ -230,6 +284,11 @@ async function activate(context) {
     statusBar,
     definitionsChanged,
     vscode.commands.registerCommand('tokenoptipy.openTrace', openLatestTrace),
+    vscode.commands.registerCommand('tokenoptipy.configureMcpClients', () => configureMcpClients().catch(showError)),
+    vscode.commands.registerCommand('tokenoptipy.buildGraph', () => buildGraph().catch(showError)),
+    vscode.commands.registerCommand('tokenoptipy.buildAndOpenGraph', () => buildAndOpenGraph().catch(showError)),
+    vscode.commands.registerCommand('tokenoptipy.openGraph', () => openGraph().catch(showError)),
+    vscode.commands.registerCommand('tokenoptipy.showPromptFlow', () => showPromptFlow().catch(showError)),
     vscode.lm.registerMcpServerDefinitionProvider(PROVIDER_ID, {
       onDidChangeMcpServerDefinitions: definitionsChanged.event,
       provideMcpServerDefinitions: async () => serverDefinitions(),
@@ -260,6 +319,8 @@ async function activate(context) {
   await configureWorkspaces();
   await refreshStatusBar();
 }
+
+function showError(error) { vscode.window.showErrorMessage(`TokenOptiPy: ${error.message || error}`); }
 
 function deactivate() {
   disposeWatchers();

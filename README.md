@@ -39,6 +39,19 @@ tokenoptipy hotspots
 
 Open `tokenoptipy-out/graph.html` to explore the result.
 
+### Universal MCP setup
+
+```bash
+tokenoptipy mcp-config --client all
+tokenoptipy agent-init --client all
+python -m tokenoptipy.mcp_server
+```
+
+This generates local stdio configuration for Codex, Claude Code/Desktop, GitHub Copilot and
+VS Code, Cursor, Windsurf, Cline, Roo Code, Continue, and generic MCP clients. The MCP tools
+include `get_prompt_flow` and `build_graph_report`; prompt bodies and sensitive arguments are
+never written to traces.
+
 > [!IMPORTANT]
 > Token counts and optimization opportunities are estimates produced through static
 > analysis. Runtime inputs may differ, and reducing tokens does not guarantee equal model
