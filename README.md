@@ -1,6 +1,14 @@
 # TokenOptiPy — TokenGraph Engine
 
-TokenOptiPy 0.4 analyzes Python, JavaScript, and TypeScript without executing project code, imports, package scripts, or dependencies. JavaScript and TypeScript use Tree-sitter with bundled platform wheels (`tree-sitter-javascript` and `tree-sitter-typescript`).
+TokenOptiPy 0.5 analyzes multilingual projects locally without executing project code, imports, compilers, package scripts, or dependencies. Python uses its standard AST and JavaScript/TypeScript use Tree-sitter. PHP, Java, C, C++, C#, Go, and Rust use isolated structural adapters and conservative, evidence-based model-call signatures.
+
+| Language | Analysis | Imports | Prompts | Model calls | Status |
+|---------|---------|---------|---------|-------------|--------|
+| Python | AST | Yes | Yes | Yes | Stable |
+| JavaScript / TypeScript | Tree-sitter | Yes | Yes | Yes | Stable |
+| PHP, Java, C, C++, C#, Go, Rust | Structural | Local | Yes | Conservative | Experimental |
+
+Use `tokenoptipy build . --language auto`, repeat `--language` to select several languages, or run `tokenoptipy languages --json` for parser diagnostics. Static analysis cannot resolve every dynamic flow, reflection call, or complex C/C++ macro; generic HTTP clients may require recognizable endpoint and payload evidence. TokenOptiPy reports optimization opportunities, not guarantees.
 
 <p align="center">
   <strong>See where tokens enter your Python LLM application.</strong>
