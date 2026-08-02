@@ -90,6 +90,20 @@ def test_python_prompt_secrets_are_redacted_from_all_reports(tmp_path: Path) -> 
     assert secret not in outputs["html"].read_text(encoding="utf-8")
 
 
+def test_reports_never_include_a_complete_short_prompt(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    complete_prompt = "You are a private support assistant."
+    (project / "app.py").write_text(
+        f'SYSTEM_PROMPT = "{complete_prompt}"\n',
+        encoding="utf-8",
+    )
+
+    outputs = write_graph_outputs(build_token_graph(project), tmp_path / "out")
+    assert complete_prompt not in outputs["json"].read_text(encoding="utf-8")
+    assert complete_prompt not in outputs["html"].read_text(encoding="utf-8")
+
+
 def test_inline_prompt_secret_is_redacted(tmp_path: Path) -> None:
     project = tmp_path / "project"
     project.mkdir()
@@ -151,7 +165,8 @@ def test_html_report_escapes_script_terminators(tmp_path: Path) -> None:
     graph = build_token_graph(project)
     html = write_graph_outputs(graph, tmp_path / "out")["html"].read_text(encoding="utf-8")
     assert payload not in html
-    assert "\\u003c/script\\u003e" in html
+    assert "\\u003c/script\\u003e" not in html
+    assert '"preview_redacted": true' in html
 
 
 def test_ordinary_markdown_and_yaml_are_not_prompts(tmp_path: Path) -> None:

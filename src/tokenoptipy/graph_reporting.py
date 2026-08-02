@@ -90,11 +90,25 @@ def json_for_inline_script(value: Any) -> str:
     )
 
 
+def privacy_safe_graph_payload(graph: TokenGraph) -> dict[str, Any]:
+    """Serialize a graph for reports without retaining prompt text, even when short."""
+    payload = graph.to_dict()
+    for node in payload.get("nodes", []):
+        if node.get("type") != "prompt":
+            continue
+        attributes = node.get("attributes")
+        if isinstance(attributes, dict):
+            attributes.pop("preview", None)
+            attributes["preview_redacted"] = True
+    return payload
+
+
 def write_graph_json(graph: TokenGraph, path: str | Path) -> Path:
     output = Path(path)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(
-        json.dumps(graph.to_dict(), ensure_ascii=False, indent=2, default=str), encoding="utf-8"
+        json.dumps(privacy_safe_graph_payload(graph), ensure_ascii=False, indent=2, default=str),
+        encoding="utf-8",
     )
     return output
 
@@ -172,7 +186,7 @@ def write_markdown_report(graph: TokenGraph, path: str | Path) -> Path:
 
 def _legacy_graph_html(graph: TokenGraph) -> str:
     data, stats, colors = (
-        json_for_inline_script(graph.to_dict()),
+        json_for_inline_script(privacy_safe_graph_payload(graph)),
         compute_stats(graph),
         json_for_inline_script(TYPE_COLORS),
     )
@@ -185,7 +199,7 @@ function neighbors(id){{const s=new Set([id]);data.edges.forEach(e=>{{if(e.sourc
 
 
 def _report_payload(graph: TokenGraph, report_path: str | None = None) -> dict[str, Any]:
-    payload = graph.to_dict()
+    payload = privacy_safe_graph_payload(graph)
     metadata = dict(payload.get("metadata", {}))
     events = read_trace_events(limit=20, root=graph.project_root)
     trace_id = metadata.get("trace_id")
