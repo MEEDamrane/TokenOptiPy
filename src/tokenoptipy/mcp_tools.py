@@ -8,6 +8,7 @@ from .analyzer import analyze_prompt
 from .counters import count_tokens
 from .graph_engine import build_token_graph, compute_stats, graph_hotspots, prompt_flow, query_graph
 from .graph_reporting import write_graph_outputs
+from .languages import LANGUAGE_REGISTRY
 from .trace import read_trace_events, trace_tool, workspace_root
 from .validators import ValidationPolicy, validate_candidate
 
@@ -63,6 +64,7 @@ def inspect_workspace(
     buildReport: bool = False,
     includeDocumentationPrompts: bool = False,
     language: str = "auto",
+    languages: list[str] | None = None,
     promptLimit: int | None = None,
 ) -> dict[str, Any]:
     root = workspace_root()
@@ -75,7 +77,7 @@ def inspect_workspace(
             backend=_backend(backend),
             max_file_size=safe_size,
             include_documentation_prompts=includeDocumentationPrompts,
-            language=language,
+            language=languages or language,
         )
         stats = compute_stats(graph)
         hotspots = graph_hotspots(graph, limit=safe_limit)
@@ -225,6 +227,7 @@ def get_prompt_flow(
     backend: str = "simple",
     includeDocumentationPrompts: bool = False,
     language: str = "auto",
+    languages: list[str] | None = None,
 ) -> dict[str, Any]:
     root = workspace_root()
     project = resolve_workspace_path(projectPath)
@@ -233,7 +236,7 @@ def get_prompt_flow(
             project,
             backend=_backend(backend),
             include_documentation_prompts=includeDocumentationPrompts,
-            language=language,
+            language=languages or language,
         )
         result = prompt_flow(graph, prompt)
         result["trace_id"] = trace.trace_id
@@ -252,6 +255,7 @@ def build_graph_report(
     includeDocumentationPrompts: bool = False,
     language: str = "auto",
     outputDir: str = "",
+    languages: list[str] | None = None,
 ) -> dict[str, Any]:
     root = workspace_root()
     project = resolve_workspace_path(projectPath)
@@ -261,7 +265,7 @@ def build_graph_report(
             project,
             backend=_backend(backend),
             include_documentation_prompts=includeDocumentationPrompts,
-            language=language,
+            language=languages or language,
         )
         graph.metadata["trace_id"] = trace.trace_id
         outputs = write_graph_outputs(graph, output)
@@ -279,3 +283,17 @@ def build_graph_report(
             "trace_id": trace.trace_id,
             "privacy": "Reports contain redacted previews only; complete prompt bodies are excluded.",
         }
+
+
+def get_language_support(projectPath: str = ".") -> dict[str, Any]:
+    root = workspace_root()
+    project = resolve_workspace_path(projectPath)
+    with trace_tool("get_language_support", root=root) as trace:
+        diagnostics = LANGUAGE_REGISTRY.diagnostics(project)
+        available = {str(item["language"]): str(item["parser"]) for item in diagnostics if item["available"]}
+        unavailable = {str(item["language"]): str(item["unavailable_reason"] or "parser unavailable") for item in diagnostics if not item["available"]}
+        counts = {str(item["language"]): item["files_detected"] for item in diagnostics}
+        detected = [language for language, count in counts.items() if isinstance(count, int) and count]
+        total = sum(count for count in counts.values() if isinstance(count, int))
+        trace.set_summary(f"Detected {len(detected)} language(s); {total} source files")
+        return {"supported_languages": list(LANGUAGE_REGISTRY.language_ids), "detected_languages": detected, "available_parsers": available, "unavailable_parsers": unavailable, "file_counts": counts, "trace_id": trace.trace_id}

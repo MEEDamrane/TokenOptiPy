@@ -51,6 +51,7 @@ async def inspect_workspace(
     maxFileSize: int = 1_000_000,
     buildReport: bool = False,
     includeDocumentationPrompts: bool = False,
+    languages: list[str] | None = None,
 ) -> dict[str, Any]:
     return await asyncio.to_thread(
         mcp_tools.inspect_workspace,
@@ -60,6 +61,9 @@ async def inspect_workspace(
         maxFileSize,
         buildReport,
         includeDocumentationPrompts,
+        "auto",
+        languages,
+        None,
     )
 
 
@@ -155,6 +159,7 @@ async def get_prompt_flow(
     projectPath: str = ".",
     backend: str = "simple",
     includeDocumentationPrompts: bool = False,
+    languages: list[str] | None = None,
 ) -> dict[str, Any]:
     return await asyncio.to_thread(
         mcp_tools.get_prompt_flow,
@@ -162,6 +167,8 @@ async def get_prompt_flow(
         projectPath,
         backend,
         includeDocumentationPrompts,
+        "auto",
+        languages,
     )
 
 
@@ -176,6 +183,7 @@ async def build_graph_report(
     outputPath: str = "tokenoptipy-out",
     backend: str = "simple",
     includeDocumentationPrompts: bool = False,
+    languages: list[str] | None = None,
 ) -> dict[str, Any]:
     return await asyncio.to_thread(
         mcp_tools.build_graph_report,
@@ -183,7 +191,20 @@ async def build_graph_report(
         outputPath,
         backend,
         includeDocumentationPrompts,
+        "auto",
+        "",
+        languages,
     )
+
+
+@mcp.tool(
+    name="get_language_support",
+    title="Get language parser support",
+    description="Return supported and detected languages, parser availability, and source file counts.",
+    annotations=READ_ONLY,
+)
+async def get_language_support(projectPath: str = ".") -> dict[str, Any]:
+    return await asyncio.to_thread(mcp_tools.get_language_support, projectPath)
 
 
 def main() -> None:

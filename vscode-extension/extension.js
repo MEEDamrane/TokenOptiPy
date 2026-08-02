@@ -95,7 +95,7 @@ function serverDefinitions() {
       TOKENOPTIPY_WORKSPACE_ROOT: folder.uri.fsPath,
       TOKENOPTIPY_TRACE_FILE: tracePath(folder)
     },
-    version: '0.4.0'
+    version: '0.5.0'
   }));
 }
 
@@ -240,6 +240,17 @@ async function showDetectedLanguages() {
   ], { title: 'TokenOptiPy detected project languages' });
 }
 
+async function showLanguageSupport() {
+  const folder = workspaceFolder();
+  const { stdout } = await runTokenOptiPy(folder, ['languages', '.', '--json']);
+  const items = JSON.parse(stdout).map(item => ({
+    label: `${item.available ? '$(check)' : '$(warning)'} ${item.language}`,
+    description: `${item.files_detected} files · ${item.status}`,
+    detail: `${item.parser} · ${item.extensions.join(', ')}`
+  }));
+  await vscode.window.showQuickPick(items, { title: 'TokenOptiPy language support' });
+}
+
 async function openLatestTrace() {
   const folders = vscode.workspace.workspaceFolders || [];
   const candidates = [];
@@ -306,6 +317,7 @@ async function activate(context) {
     vscode.commands.registerCommand('tokenoptipy.openGraph', () => openGraph().catch(showError)),
     vscode.commands.registerCommand('tokenoptipy.showPromptFlow', () => showPromptFlow().catch(showError)),
     vscode.commands.registerCommand('tokenoptipy.showDetectedLanguages', () => showDetectedLanguages().catch(showError)),
+    vscode.commands.registerCommand('tokenoptipy.showLanguageSupport', () => showLanguageSupport().catch(showError)),
     vscode.lm.registerMcpServerDefinitionProvider(PROVIDER_ID, {
       onDidChangeMcpServerDefinitions: definitionsChanged.event,
       provideMcpServerDefinitions: async () => serverDefinitions(),
