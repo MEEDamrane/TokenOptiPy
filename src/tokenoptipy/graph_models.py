@@ -59,7 +59,7 @@ class GraphFinding:
 @dataclass
 class TokenGraph:
     project_root: str
-    version: str = "0.4"
+    version: str = "0.5"
     nodes: dict[str, GraphNode] = field(default_factory=dict)
     edges: list[GraphEdge] = field(default_factory=list)
     findings: list[GraphFinding] = field(default_factory=list)
@@ -104,7 +104,7 @@ class TokenGraph:
     def from_dict(cls, data: dict[str, Any]) -> TokenGraph:
         graph = cls(
             project_root=data.get("project_root", "."),
-            version=data.get("version", "0.4"),
+            version=data.get("version", "0.5"),
             metadata=data.get("metadata", {}),
         )
         for node_data in data.get("nodes", []):

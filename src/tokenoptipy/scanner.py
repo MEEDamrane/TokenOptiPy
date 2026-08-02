@@ -12,6 +12,19 @@ DEFAULT_EXTENSIONS = {
     ".cjs",
     ".ts",
     ".tsx",
+    ".php",
+    ".java",
+    ".c",
+    ".h",
+    ".cpp",
+    ".cc",
+    ".cxx",
+    ".hpp",
+    ".hh",
+    ".hxx",
+    ".cs",
+    ".go",
+    ".rs",
     ".txt",
     ".md",
     ".json",
@@ -48,6 +61,21 @@ DEFAULT_IGNORES = {
     ".netlify",
     "generated",
     "vendor",
+    "target",
+    "bin",
+    "obj",
+    "third_party",
+    "external",
+    "cache",
+    ".idea",
+    ".vs",
+    ".vscode",
+    "packages",
+    "artifacts",
+    "TestResults",
+    "CMakeFiles",
+    "vcpkg_installed",
+    ".gradle",
     "site-packages",
     "tokenoptipy-demo",
     "tokenoptipy-out",
@@ -104,7 +132,7 @@ def scan_project(
         relative = path.relative_to(project_root.parent if project_root.is_file() else project_root)
         parts = relative.parts
         exclusions = DEFAULT_IGNORES | (exclude or set())
-        if any(part in exclusions or part.endswith(IGNORED_DIRECTORY_SUFFIXES) for part in parts[:-1]):
+        if any(part in exclusions or part.startswith("cmake-build-") or part.endswith(IGNORED_DIRECTORY_SUFFIXES) for part in parts[:-1]):
             continue
         if not include_hidden and any(part.startswith(".") for part in parts):
             continue
@@ -114,6 +142,8 @@ def scan_project(
         if lowered in {"package-lock.json", "yarn.lock", "pnpm-lock.yaml"}:
             continue
         if lowered.endswith((".min.js", ".bundle.js", ".map")):
+            continue
+        if lowered.endswith("_generated.go"):
             continue
         if path.is_symlink():
             try:
