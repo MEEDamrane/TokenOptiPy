@@ -90,6 +90,20 @@ def test_python_prompt_secrets_are_redacted_from_all_reports(tmp_path: Path) -> 
     assert secret not in outputs["html"].read_text(encoding="utf-8")
 
 
+def test_reports_never_include_a_complete_short_prompt(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    complete_prompt = "You are a private support assistant."
+    (project / "app.py").write_text(
+        f'SYSTEM_PROMPT = "{complete_prompt}"\n',
+        encoding="utf-8",
+    )
+
+    outputs = write_graph_outputs(build_token_graph(project), tmp_path / "out")
+    assert complete_prompt not in outputs["json"].read_text(encoding="utf-8")
+    assert complete_prompt not in outputs["html"].read_text(encoding="utf-8")
+
+
 def test_inline_prompt_secret_is_redacted(tmp_path: Path) -> None:
     project = tmp_path / "project"
     project.mkdir()
@@ -151,7 +165,8 @@ def test_html_report_escapes_script_terminators(tmp_path: Path) -> None:
     graph = build_token_graph(project)
     html = write_graph_outputs(graph, tmp_path / "out")["html"].read_text(encoding="utf-8")
     assert payload not in html
-    assert "\\u003c/script\\u003e" in html
+    assert "\\u003c/script\\u003e" not in html
+    assert '"preview_redacted": true' in html
 
 
 def test_ordinary_markdown_and_yaml_are_not_prompts(tmp_path: Path) -> None:
@@ -182,3 +197,48 @@ def test_yaml_with_prompt_key_is_detected(tmp_path: Path) -> None:
     prompts = [node for node in graph.nodes.values() if node.type == "prompt"]
     assert len(prompts) == 1
     assert prompts[0].label == "llm.yaml"
+
+
+def test_generated_package_metadata_directories_are_ignored(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    metadata = project / "dynamic_package.egg-info"
+    metadata.mkdir(parents=True)
+    (metadata / "SOURCES.txt").write_text("You are listed here. Return only files.", encoding="utf-8")
+    (metadata / "requires.txt").write_text("mcp>=1.28", encoding="utf-8")
+
+    graph = build_token_graph(project)
+
+    assert not any("egg-info" in (node.path or "") for node in graph.nodes.values())
+
+
+def test_markdown_prompt_policy_is_strict_and_configurable(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    (project / "docs").mkdir(parents=True)
+    (project / "prompts").mkdir()
+    (project / "docs" / "GRAPH_SCHEMA.md").write_text(
+        "# TokenGraph schema\n\nNodes contain IDs, labels and attributes.", encoding="utf-8"
+    )
+    (project / "prompts" / "system.md").write_text(
+        "Always answer with a compact JSON object.", encoding="utf-8"
+    )
+
+    default_graph = build_token_graph(project)
+    documented_graph = build_token_graph(project, include_documentation_prompts=True)
+
+    default_paths = {n.path for n in default_graph.nodes.values() if n.type == "prompt"}
+    documented_paths = {n.path for n in documented_graph.nodes.values() if n.type == "prompt"}
+    assert default_paths == {"prompts/system.md"}
+    assert "docs/GRAPH_SCHEMA.md" in documented_paths
+
+
+def test_embedded_html_report_template_is_not_a_prompt(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "report.py").write_text(
+        'template = """<!doctype html><html><body>Prompt inspector</body></html>"""',
+        encoding="utf-8",
+    )
+
+    graph = build_token_graph(project)
+
+    assert not [node for node in graph.nodes.values() if node.type == "prompt"]

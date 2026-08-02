@@ -1,0 +1,4 @@
+[package]
+name = "tokenoptipy-static-example"
+version = "0.0.0"
+edition = "2021"

@@ -78,3 +78,15 @@ def test_html_is_self_contained_safe_and_interactive(tmp_path: Path) -> None:
     assert "</script><img" not in output
     assert "marker-end" in output and "Light / dark" in output
     assert "edgeFilter" in output and "Connected nodes" in output and "Trace ID" in output
+
+
+def test_prompt_first_html_modes_panels_tabs_and_safe_labels(tmp_path: Path) -> None:
+    output = graph_html(sample_graph(tmp_path))
+    assert all(label in output for label in ("Prompt flow", "Overview", "All nodes"))
+    assert "localStorage.getItem('tokenoptipy.mode')||'flow'" in output
+    assert all(tab in output for tab in ("Summary", "Flow", "Findings", "Trace"))
+    assert "closeLeft" in output and "closeRight" in output
+    assert ".node text{display:none" in output
+    assert "requestAnimationFrame" in output
+    assert "innerHTML" not in output
+    assert "cdn." not in output and "unpkg" not in output

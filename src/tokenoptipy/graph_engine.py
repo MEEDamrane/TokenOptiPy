@@ -9,7 +9,10 @@ from typing import Any
 
 from .counters import count_tokens
 from .graph_models import GraphEdge, GraphFinding, GraphNode, TokenGraph
+from .javascript_extractor import extract_javascript_file
+from .languages import LANGUAGE_REGISTRY
 from .privacy import redact_preview
+from .project_config import LANGUAGES, detect_project, load_project_config
 from .python_extractor import (
     content_hash,
     extract_python_file,
@@ -95,12 +98,32 @@ def should_extract_json_string(json_path: str, text: str) -> bool:
     return bool(PROMPT_KEY_RE.fullmatch(leaf)) or message_content or len(text) >= 120
 
 
-def should_extract_text_file(item: ProjectFile, text: str) -> bool:
+def should_extract_text_file(
+    item: ProjectFile,
+    text: str,
+    *,
+    include_documentation_prompts: bool = False,
+) -> bool:
     if item.extension in PROMPT_FILE_EXTENSIONS:
         return True
     if item.extension == ".txt":
         return True
     path_terms = re.split(r"[/_.-]", item.relative_path)
+    if item.extension == ".md":
+        in_prompt_directory = any(
+            part.lower() in {"prompt", "prompts"}
+            for part in Path(item.relative_path).parts[:-1]
+        )
+        prompt_named = any(
+            term in Path(item.relative_path).stem.lower()
+            for term in ("prompt", "system", "instruction", "agent", "template")
+        )
+        return bool(
+            include_documentation_prompts
+            or in_prompt_directory
+            or prompt_named
+            or PROMPT_CONTENT_RE.search(text)
+        )
     if any(PROMPT_KEY_RE.fullmatch(term) for term in path_terms if term):
         return True
     if PROMPT_CONTENT_RE.search(text):
@@ -119,12 +142,30 @@ def build_token_graph(
     backend: str = "simple",
     max_file_size: int = 1_000_000,
     include_hidden: bool = False,
+    include_documentation_prompts: bool = False,
+    language: str | list[str] | tuple[str, ...] = "auto",
 ) -> TokenGraph:
     project_root = Path(root).expanduser().resolve()
+    requested = [language] if isinstance(language, str) else list(language)
+    invalid = sorted(set(requested) - LANGUAGES)
+    if invalid:
+        raise ValueError(f"Unsupported language(s): {', '.join(invalid)}. Accepted values: {', '.join(sorted(LANGUAGES))}.")
+    config = load_project_config(project_root)
+    if "all" in requested:
+        selected = set(LANGUAGE_REGISTRY.language_ids)
+    elif requested == ["auto"]:
+        selected = set(config.languages) if config.languages else set(LANGUAGE_REGISTRY.detect(project_root))
+    else:
+        selected = set(requested) - {"auto"}
+    extensions = None
+    if selected:
+        extensions = set().union(*(set(LANGUAGE_REGISTRY.get(item).extensions) for item in selected)) | {".txt", ".md", ".json", ".yaml", ".yml", ".prompt", ".jinja", ".jinja2", ".j2"}
     files = scan_project(
         project_root,
         max_file_size=max_file_size,
         include_hidden=include_hidden,
+        extensions=extensions,
+        exclude=set(config.exclude),
     )
     graph = TokenGraph(project_root=str(project_root))
     graph.metadata.update(
@@ -132,8 +173,18 @@ def build_token_graph(
             "backend": backend,
             "file_count": len(files),
             "project_fingerprint": project_fingerprint(files),
+            "parser": "Python ast + Tree-sitter JavaScript/TypeScript grammars",
+            "language": requested,
         }
     )
+    graph.metadata.update(detect_project(project_root, {item.extension for item in files}))
+    counts = {name: sum(item.extension in adapter.extensions for item in files) for name in LANGUAGE_REGISTRY.language_ids for adapter in [LANGUAGE_REGISTRY.get(name)]}
+    graph.metadata["file_counts_by_language"] = counts
+    graph.metadata["language_file_counts"] = counts
+    graph.metadata["available_parsers"] = {name: adapter.parser_name for name in LANGUAGE_REGISTRY.language_ids for adapter in [LANGUAGE_REGISTRY.get(name)] if adapter.is_available()}
+    graph.metadata["unavailable_parsers"] = {name: adapter.unavailable_reason() for name in LANGUAGE_REGISTRY.language_ids for adapter in [LANGUAGE_REGISTRY.get(name)] if not adapter.is_available()}
+    graph.metadata.setdefault("detected_frameworks", [])
+    graph.metadata["detected_llm_sdks"] = []
 
     for item in files:
         graph.add_node(file_node(item))
@@ -149,19 +200,43 @@ def build_token_graph(
                 graph.add_edge(edge)
             continue
 
+        if item.extension in {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx"}:
+            js_extraction = extract_javascript_file(item.absolute_path, item.relative_path, backend=backend)
+            for node in js_extraction.nodes:
+                graph.add_node(node)
+            for edge in js_extraction.edges:
+                graph.add_edge(edge)
+            for module, _kind, _local in js_extraction.imports:
+                if module.startswith("."):
+                    _link_local_import(graph, project_root, item.relative_path, module)
+            continue
+
+        adapter = LANGUAGE_REGISTRY.for_extension(item.extension)
+        if adapter is not None and adapter.language_id in selected:
+            language_file = adapter.parse_file(item.absolute_path, item.absolute_path.read_bytes(), item.relative_path)
+            language_extraction = adapter.extract(language_file, backend=backend)
+            for node in language_extraction.nodes:
+                graph.add_node(node)
+            for edge in language_extraction.edges:
+                graph.add_edge(edge)
+            for imported in language_extraction.imports:
+                if imported.local:
+                    _link_adapter_import(graph, project_root, item.relative_path, imported.value, adapter.extensions)
+            continue
+
         text = item.absolute_path.read_text(encoding="utf-8", errors="replace")
         if not text.strip():
             continue
 
         if item.extension == ".json":
             try:
-                parsed = json.loads(text)
+                json_value = json.loads(text)
             except json.JSONDecodeError:
-                parsed = None
-            if parsed is not None:
+                json_value = None
+            if json_value is not None:
                 extracted = [
                     (json_path, value)
-                    for json_path, value in extract_json_strings(parsed)
+                    for json_path, value in extract_json_strings(json_value)
                     if should_extract_json_string(json_path, value)
                 ]
                 for json_path, value in extracted:
@@ -194,7 +269,11 @@ def build_token_graph(
                 if extracted:
                     continue
 
-        if should_extract_text_file(item, text):
+        if should_extract_text_file(
+            item,
+            text,
+            include_documentation_prompts=include_documentation_prompts,
+        ):
             prompt = text_prompt_node(item, text, backend)
             graph.add_node(prompt)
             graph.add_edge(
@@ -206,6 +285,36 @@ def build_token_graph(
     add_graph_findings(graph)
     graph.metadata.update(compute_stats(graph))
     return graph
+
+
+def _link_adapter_import(graph: TokenGraph, root: Path, source: str, value: str, extensions: tuple[str, ...]) -> None:
+    raw = value.replace("\\", "/")
+    base = (root / Path(source).parent / raw).resolve()
+    try:
+        base.relative_to(root)
+    except ValueError:
+        return
+    candidates = [base] if base.suffix else [base.with_suffix(ext) for ext in extensions]
+    for candidate in candidates:
+        if candidate.is_file() and not candidate.is_symlink():
+            target = candidate.relative_to(root).as_posix()
+            graph.add_edge(GraphEdge(f"file:{source}", f"file:{target}", "IMPORTS"))
+            return
+
+
+def _link_local_import(graph: TokenGraph, root: Path, source: str, module: str) -> None:
+    base = (root / Path(source).parent / module).resolve()
+    try:
+        base.relative_to(root)
+    except ValueError:
+        return
+    candidates = [base] if base.suffix else [base.with_suffix(ext) for ext in (".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs")]
+    candidates += [base / f"index{ext}" for ext in (".js", ".ts", ".jsx", ".tsx")]
+    for candidate in candidates:
+        if candidate.is_file():
+            target = candidate.relative_to(root).as_posix()
+            graph.add_edge(GraphEdge(f"file:{source}", f"file:{target}", "IMPORTS"))
+            return
 
 
 def link_file_prompt_references(graph: TokenGraph) -> None:

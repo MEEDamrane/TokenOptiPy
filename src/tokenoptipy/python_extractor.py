@@ -152,6 +152,8 @@ def expression_text(node: ast.AST) -> tuple[str | None, list[str]]:
 
 
 def is_prompt_candidate(name: str, text: str) -> bool:
+    if text.lstrip().lower().startswith(("<!doctype html", "<html")):
+        return False
     if PROMPT_NAME_RE.search(name):
         return True
     lowered = text.lower()

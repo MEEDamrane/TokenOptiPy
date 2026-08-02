@@ -50,6 +50,8 @@ async def inspect_workspace(
     limit: int = 10,
     maxFileSize: int = 1_000_000,
     buildReport: bool = False,
+    includeDocumentationPrompts: bool = False,
+    languages: list[str] | None = None,
 ) -> dict[str, Any]:
     return await asyncio.to_thread(
         mcp_tools.inspect_workspace,
@@ -58,6 +60,10 @@ async def inspect_workspace(
         limit,
         maxFileSize,
         buildReport,
+        includeDocumentationPrompts,
+        "auto",
+        languages,
+        None,
     )
 
 
@@ -149,9 +155,21 @@ async def get_traceability(limit: int = 20) -> dict[str, Any]:
     annotations=READ_ONLY,
 )
 async def get_prompt_flow(
-    prompt: str, projectPath: str = ".", backend: str = "simple"
+    prompt: str,
+    projectPath: str = ".",
+    backend: str = "simple",
+    includeDocumentationPrompts: bool = False,
+    languages: list[str] | None = None,
 ) -> dict[str, Any]:
-    return await asyncio.to_thread(mcp_tools.get_prompt_flow, prompt, projectPath, backend)
+    return await asyncio.to_thread(
+        mcp_tools.get_prompt_flow,
+        prompt,
+        projectPath,
+        backend,
+        includeDocumentationPrompts,
+        "auto",
+        languages,
+    )
 
 
 @mcp.tool(
@@ -164,10 +182,29 @@ async def build_graph_report(
     projectPath: str = ".",
     outputPath: str = "tokenoptipy-out",
     backend: str = "simple",
+    includeDocumentationPrompts: bool = False,
+    languages: list[str] | None = None,
 ) -> dict[str, Any]:
     return await asyncio.to_thread(
-        mcp_tools.build_graph_report, projectPath, outputPath, backend
+        mcp_tools.build_graph_report,
+        projectPath,
+        outputPath,
+        backend,
+        includeDocumentationPrompts,
+        "auto",
+        "",
+        languages,
     )
+
+
+@mcp.tool(
+    name="get_language_support",
+    title="Get language parser support",
+    description="Return supported and detected languages, parser availability, and source file counts.",
+    annotations=READ_ONLY,
+)
+async def get_language_support(projectPath: str = ".") -> dict[str, Any]:
+    return await asyncio.to_thread(mcp_tools.get_language_support, projectPath)
 
 
 def main() -> None:

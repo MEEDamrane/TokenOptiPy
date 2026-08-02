@@ -50,4 +50,8 @@ optimized.txt
 
 # Système
 .DS_Store
-Thumbs.db
+Thumbs.dbnode-example-out/
+python-example-out/
+/node-example-out/
+/python-example-out/
+/.tmp-*/

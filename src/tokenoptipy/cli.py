@@ -21,6 +21,7 @@ from .graph_engine import (
 )
 from .graph_reporting import write_graph_outputs
 from .integrations import AGENT_PATHS, CLIENT_PATHS, write_agent_instructions, write_mcp_configs
+from .languages import LANGUAGE_REGISTRY
 from .optimizer import optimize_prompt
 from .reporting import format_summary, write_json_report
 from .validators import ValidationPolicy
@@ -48,7 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--version",
         action="version",
-        version="TokenOptiPy 0.3.0",
+        version="TokenOptiPy 0.5.0",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -61,6 +62,12 @@ def build_parser() -> argparse.ArgumentParser:
     build_command.add_argument("--backend", default="simple", choices=["simple", "auto", "tiktoken"])
     build_command.add_argument("--max-file-size", type=int, default=1_000_000)
     build_command.add_argument("--include-hidden", action="store_true")
+    build_command.add_argument("--language", action="append", choices=["auto", "all", *LANGUAGE_REGISTRY.language_ids], help="Language to analyze; repeat for multiple languages (default: auto).")
+    build_command.add_argument(
+        "--include-documentation-prompts",
+        action="store_true",
+        help="Treat Markdown documentation as prompt content.",
+    )
     build_command.add_argument(
         "--update",
         action="store_true",
@@ -143,6 +150,10 @@ def build_parser() -> argparse.ArgumentParser:
     agent_init.add_argument("path", nargs="?", default=".")
     agent_init.add_argument("--client", action="append", choices=["all", *AGENT_PATHS], default=[])
 
+    languages_command = subparsers.add_parser("languages", help="Show language parser support and detected files.")
+    languages_command.add_argument("path", nargs="?", default=".")
+    languages_command.add_argument("--json", action="store_true", dest="as_json")
+
     return parser
 
 
@@ -162,6 +173,8 @@ def run_build(args: argparse.Namespace) -> int:
         backend=args.backend,
         max_file_size=args.max_file_size,
         include_hidden=args.include_hidden,
+        include_documentation_prompts=args.include_documentation_prompts,
+        language=args.language or ["auto"],
     )
     outputs = write_graph_outputs(graph, output_dir)
     state_path.write_text(
@@ -200,6 +213,19 @@ def run_stats(args: argparse.Namespace) -> int:
         print("Node types:")
         for node_type, count in stats["node_types"].items():
             print(f"  {node_type}: {count}")
+    return 0
+
+
+def run_languages(args: argparse.Namespace) -> int:
+    diagnostics = LANGUAGE_REGISTRY.diagnostics(Path(args.path).expanduser().resolve())
+    if args.as_json:
+        print_json(diagnostics)
+    else:
+        for item in diagnostics:
+            state = "available" if item["available"] else "unavailable"
+            extensions = item["extensions"]
+            extension_text = ",".join(str(value) for value in extensions) if isinstance(extensions, list) else str(extensions)
+            print(f"{item['language']!s:<12} {extension_text:<30} {item['parser']!s:<36} {state:<12} {item['files_detected']} files  {item['status']}")
     return 0
 
 
@@ -249,6 +275,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_build(args)
         if args.command == "stats":
             return run_stats(args)
+        if args.command == "languages":
+            return run_languages(args)
         if args.command == "hotspots":
             return run_hotspots(args)
         if args.command == "explain":
