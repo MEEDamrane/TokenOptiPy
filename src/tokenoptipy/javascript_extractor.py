@@ -13,6 +13,7 @@ from .counters import count_tokens
 from .graph_models import GraphEdge, GraphNode
 from .privacy import redact_preview
 from .python_extractor import content_hash, minhash_signature, stable_id, term_hashes
+from .string_classification import classify_candidate, classification_attributes
 
 PROMPT_NAME = re.compile(r"prompt|instruction|system|message|context|template|schema|history|conversation", re.I)
 INPUT_KEYS = {"prompt", "messages", "input", "instructions", "system", "contents", "content", "schema"}
@@ -22,7 +23,7 @@ KNOWN_CALLS = (
     "streamObject", ".invoke", ".generate", ".call", "ollama.chat", "ollama.generate",
     "createChatCompletion", "sendMessage",
 )
-SDK_MODULES = {"openai", "@anthropic-ai/sdk", "@google/generative-ai", "ai", "@langchain", "ollama"}
+SDK_MODULES = {"openai", "@anthropic-ai/sdk", "@google/generative-ai", "@google/genai", "ai", "@langchain", "ollama", "openrouter", "litellm", "llamaindex", "crewai", "autogen"}
 
 
 @dataclass
@@ -131,13 +132,15 @@ class Visitor:
         node_id = stable_id("prompt", self.relative, name, str(value.start_point.row + 1))
         preview, secret = redact_preview(text)
         self.bindings[name] = node_id
-        self.result.nodes.append(GraphNode(node_id, "prompt", name, self.relative, value.start_point.row + 1, value.end_point.row + 1, count_tokens(text, backend=self.backend).tokens, {"root_file": self.relative, "language": self.language, "source_kind": "javascript_assignment", "preview": preview, "content_hash": content_hash(text), "minhash": minhash_signature(text), "term_hashes": term_hashes(text), "characters": len(text), "placeholders": sorted(set(refs)), "has_possible_secret": secret}))
+        self.result.nodes.append(GraphNode(node_id, "prompt", name, self.relative, value.start_point.row + 1, value.end_point.row + 1, count_tokens(text, backend=self.backend).tokens, {"root_file": self.relative, "language": self.language, "source_kind": "javascript_assignment", "preview": preview, "content_hash": content_hash(text), "minhash": minhash_signature(text), "term_hashes": term_hashes(text), "characters": len(text), "placeholders": sorted(set(refs)), "has_possible_secret": secret, **classify_candidate(name=name, path=self.relative, source_kind="javascript_assignment", dynamic=bool(refs))}))
         self.result.edges.append(GraphEdge(function or self.file_id, node_id, "DEFINES_PROMPT"))
         for ref in sorted(set(refs)):
             ref_id = self.bindings.get(ref) or stable_id("context", self.relative, ref)
             if ref_id not in self.bindings.values():
                 self.result.nodes.append(GraphNode(ref_id, "context", ref, self.relative, value.start_point.row + 1, attributes={"root_file": self.relative, "dynamic": True}))
             self.result.edges.append(GraphEdge(node_id, ref_id, "USES_VARIABLE"))
+            self.result.edges.append(GraphEdge(ref_id, node_id, "CONTEXT_TO_PROMPT"))
+            self.result.edges.append(GraphEdge(ref_id, node_id, "PROMPT_BUILT_FROM"))
 
     def _call(self, node: Any, function: str | None) -> None:
         fn = node.child_by_field_name("function")
@@ -145,17 +148,29 @@ class Visitor:
         if not fn:
             return
         name, raw = self.text(fn), self.text(args) if args else ""
+        if name in {"console.log", "console.debug", "console.info", "console.warn", "vscode.window.showErrorMessage", "window.showErrorMessage"} and args:
+            text_value, refs = self._literal(args.named_children[0]) if args.named_children else (None, [])
+            if text_value:
+                classification = "error_message" if "ErrorMessage" in name else "log_message"
+                string_id = stable_id("string", self.relative, name, str(node.start_point.row + 1))
+                preview, secret = redact_preview(text_value)
+                attrs = {"root_file": self.relative, "source_kind": "javascript_call_argument", "preview": preview, "has_possible_secret": secret, "placeholders": refs}
+                attrs.update(classification_attributes(classification, .99, f"String is passed to {name}", [f"ast_call={name}", "not_passed_to_model_call"]))
+                self.result.nodes.append(GraphNode(string_id, "string", f"{name} argument", self.relative, node.start_point.row + 1, node.end_point.row + 1, count_tokens(text_value, backend=self.backend).tokens, attrs))
+                self.result.edges.append(GraphEdge(function or self.file_id, string_id, "CONTAINS_STRING"))
+            return
         likely = any(token in name for token in KNOWN_CALLS)
         generic = name.rsplit(".", 1)[-1] in {"invoke", "generate", "complete", "completion", "chat", "sendMessage"}
         has_input = any(re.search(rf"\b{key}\s*:", raw) for key in INPUT_KEYS)
         if not likely and not (generic and (has_input or self.imported_sdks)):
             return
         call_id = stable_id("model_call", self.relative, name, str(node.start_point.row + 1))
-        self.result.nodes.append(GraphNode(call_id, "model_call", name, self.relative, node.start_point.row + 1, node.end_point.row + 1, attributes={"root_file": self.relative, "language": self.language, "sdk_imports": sorted(self.imported_sdks)}))
+        self.result.nodes.append(GraphNode(call_id, "model_call", name, self.relative, node.start_point.row + 1, node.end_point.row + 1, attributes={"root_file": self.relative, "language": self.language, "sdk_imports": sorted(self.imported_sdks), "confidence": .96, "evidence": [f"tree_sitter_call={name}", *[f"sdk_import={sdk}" for sdk in sorted(self.imported_sdks)]]}))
         self.result.edges.append(GraphEdge(function or self.file_id, call_id, "CALLS_MODEL"))
         for binding, target in self.bindings.items():
             if re.search(rf"\b{re.escape(binding)}\b", raw):
                 self.result.edges.append(GraphEdge(target, call_id, "FLOWS_TO"))
+                self.result.edges.append(GraphEdge(target, call_id, "PROMPT_TO_MODEL_CALL", {"role": "input"}))
 
 
 def extract_javascript_file(path: Path, relative_path: str, *, backend: str = "simple") -> JavaScriptExtraction:

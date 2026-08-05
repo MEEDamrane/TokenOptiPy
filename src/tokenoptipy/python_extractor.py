@@ -10,6 +10,7 @@ from typing import Any
 from .counters import count_tokens
 from .graph_models import GraphEdge, GraphNode
 from .privacy import compact_preview, redact_preview
+from .string_classification import classify_candidate
 
 PROMPT_NAME_RE = re.compile(
     r"(?:prompt|instruction|system|message|context|template|schema|history|conversation)",
@@ -27,6 +28,12 @@ MODEL_CALL_NAMES = {
     "respond",
     "run",
 }
+SDK_TERMS = ("openai", "anthropic", "google.generativeai", "google.genai", "ollama", "litellm", "langchain", "llama_index", "crewai", "autogen")
+VERIFIED_CALL_SUFFIXES = (
+    "chat.completions.create", "responses.create", "messages.create", "ollama.chat",
+    "ollama.generate", "generate_content", "generateContent", "generateText", "streamText",
+    ".invoke", "litellm.completion", "litellm.acompletion",
+)
 PROMPT_KEYWORDS = {
     "prompt",
     "messages",
@@ -129,6 +136,15 @@ def expression_text(node: ast.AST) -> tuple[str | None, list[str]]:
         return node.value, []
     if isinstance(node, ast.JoinedStr):
         return joined_string_text(node)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        left, left_refs = expression_text(node.left)
+        right, right_refs = expression_text(node.right)
+        refs = [*left_refs, *right_refs]
+        if left is None:
+            refs.append(ast.unparse(node.left))
+        if right is None:
+            refs.append(ast.unparse(node.right))
+        return (left or "{dynamic}") + (right or "{dynamic}"), refs
     if isinstance(node, (ast.List, ast.Tuple)):
         values: list[str] = []
         variables: list[str] = []
@@ -179,6 +195,17 @@ class PythonProjectVisitor(ast.NodeVisitor):
         self.current_function: str | None = None
         self.known_assignments: dict[str, str] = {}
         self.file_node_id = f"file:{relative_path}"
+        self.imported_sdks: set[str] = set()
+
+    def visit_Import(self, node: ast.Import) -> Any:
+        self.imported_sdks.update(alias.name for alias in node.names if any(alias.name.startswith(term) for term in SDK_TERMS))
+        return node
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> Any:
+        module = node.module or ""
+        if any(module.startswith(term) for term in SDK_TERMS):
+            self.imported_sdks.add(module)
+        return node
 
     def qualified_name(self, name: str) -> str:
         return ".".join([*self.scope, name]) if self.scope else name
@@ -221,6 +248,13 @@ class PythonProjectVisitor(ast.NodeVisitor):
         for target in node.targets:
             if isinstance(target, ast.Name):
                 self._record_assignment(target.id, node.value, node)
+                if isinstance(node.value, ast.Call):
+                    call_name = self._call_name(node.value.func)
+                    if any(call_name.lower().endswith(suffix.lower()) for suffix in VERIFIED_CALL_SUFFIXES):
+                        call_id = stable_id("model_call", self.relative_path, call_name, str(node.lineno))
+                        response_id = stable_id("response", self.relative_path, target.id, str(node.lineno))
+                        self.extraction.nodes.append(GraphNode(response_id, "response", target.id, self.relative_path, node.lineno, getattr(node, "end_lineno", node.lineno), attributes={"root_file": self.relative_path}))
+                        self.extraction.edges.append(GraphEdge(call_id, response_id, "MODEL_CALL_TO_RESPONSE"))
         self.generic_visit(node)
         return node
 
@@ -292,6 +326,7 @@ class PythonProjectVisitor(ast.NodeVisitor):
                     "characters": len(text),
                     "placeholders": sorted(set(variables)),
                     "has_possible_secret": has_secret,
+                    **classify_candidate(name=qualified, path=self.relative_path, source_kind="python_assignment", dynamic=bool(variables)),
                 },
             )
         )
@@ -314,16 +349,15 @@ class PythonProjectVisitor(ast.NodeVisitor):
                 )
             )
             self.extraction.edges.append(GraphEdge(node_id, variable_id, "USES_VARIABLE"))
+            self.extraction.edges.append(GraphEdge(variable_id, node_id, "CONTEXT_TO_PROMPT"))
+            self.extraction.edges.append(GraphEdge(variable_id, node_id, "PROMPT_BUILT_FROM"))
 
     def visit_Call(self, node: ast.Call) -> Any:
         call_name = self._call_name(node.func)
         terminal = call_name.rsplit(".", 1)[-1].lower()
-        is_model_call = terminal in MODEL_CALL_NAMES and (
-            any(keyword.arg in PROMPT_KEYWORDS for keyword in node.keywords if keyword.arg)
-            or "chat" in call_name.lower()
-            or "llm" in call_name.lower()
-            or "model" in call_name.lower()
-            or "completion" in call_name.lower()
+        lowered = call_name.lower()
+        is_model_call = any(lowered.endswith(suffix.lower()) for suffix in VERIFIED_CALL_SUFFIXES) or (
+            terminal in MODEL_CALL_NAMES and bool(self.imported_sdks) and any(keyword.arg in PROMPT_KEYWORDS for keyword in node.keywords if keyword.arg)
         )
 
         if is_model_call:
@@ -341,7 +375,7 @@ class PythonProjectVisitor(ast.NodeVisitor):
                     path=self.relative_path,
                     line=getattr(node, "lineno", None),
                     end_line=getattr(node, "end_lineno", None),
-                    attributes={"root_file": self.relative_path},
+                    attributes={"root_file": self.relative_path, "sdk_imports": sorted(self.imported_sdks), "confidence": .96, "evidence": [f"ast_call={call_name}", *[f"sdk_import={sdk}" for sdk in sorted(self.imported_sdks)]]},
                 )
             )
             parent = self.current_function or self.file_node_id
@@ -366,6 +400,7 @@ class PythonProjectVisitor(ast.NodeVisitor):
                     self.extraction.edges.append(
                         GraphEdge(prompt_id, call_id, "FLOWS_TO", {"role": role})
                     )
+                    self.extraction.edges.append(GraphEdge(prompt_id, call_id, "PROMPT_TO_MODEL_CALL", {"role": role}))
                 else:
                     variable_id = stable_id("variable", self.relative_path, expression.id)
                     self.extraction.nodes.append(
@@ -417,12 +452,15 @@ class PythonProjectVisitor(ast.NodeVisitor):
                             "characters": len(text),
                             "placeholders": sorted(set(variables)),
                             "has_possible_secret": has_secret,
+                            **classify_candidate(name=f"inline {role}", path=self.relative_path, source_kind="python_inline_call", dynamic=bool(variables)),
                         },
                     )
                 )
                 self.extraction.edges.append(
                     GraphEdge(prompt_id, call_id, "FLOWS_TO", {"role": role})
                 )
+                relation = "SYSTEM_MESSAGE_OF" if role in {"system", "instructions"} else "USER_MESSAGE_OF" if role in {"prompt", "input", "messages", "content", "contents"} else "PROMPT_TO_MODEL_CALL"
+                self.extraction.edges.append(GraphEdge(prompt_id, call_id, relation, {"role": role}))
 
     @staticmethod
     def _call_name(node: ast.AST) -> str:

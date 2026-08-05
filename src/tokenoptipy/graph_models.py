@@ -59,7 +59,7 @@ class GraphFinding:
 @dataclass
 class TokenGraph:
     project_root: str
-    version: str = "0.5"
+    version: str = "0.6"
     nodes: dict[str, GraphNode] = field(default_factory=dict)
     edges: list[GraphEdge] = field(default_factory=list)
     findings: list[GraphFinding] = field(default_factory=list)

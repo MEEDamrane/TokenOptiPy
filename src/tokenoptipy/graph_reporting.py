@@ -75,6 +75,12 @@ closeLeft.setAttribute('aria-label','Close prompts panel');closeRight.setAttribu
 const tokenStat=document.querySelector('.stats span:last-child');if(tokenStat)tokenStat.title='Estimated static tokens found in prompt nodes. Runtime context may differ.';
 const tokenHelp=he('div','Token counts are static estimates. Runtime inputs and retrieved context may change the final model input.','meta');document.getElementById('left').prepend(tokenHelp);
 show();renderList();
+const flowModeButton=document.querySelector('.mode[data-mode="flow"]');
+if(flowModeButton&&!data.nodes.some(node=>node.type==='model_call')){
+  flowModeButton.textContent='Candidate Prompt Flow';
+  const empty=he('div','No LLM flow detected. Showing candidate strings and dynamic context only.','meta');
+  document.getElementById('left').prepend(empty);
+}
 </script>
 """
 
@@ -94,7 +100,7 @@ def privacy_safe_graph_payload(graph: TokenGraph) -> dict[str, Any]:
     """Serialize a graph for reports without retaining prompt text, even when short."""
     payload = graph.to_dict()
     for node in payload.get("nodes", []):
-        if node.get("type") != "prompt":
+        if node.get("type") not in {"prompt", "string"}:
             continue
         attributes = node.get("attributes")
         if isinstance(attributes, dict):
@@ -127,9 +133,25 @@ def markdown_report(graph: TokenGraph) -> str:
         f"- Graph nodes: **{stats['node_count']}**",
         f"- Graph edges: **{stats['edge_count']}**",
         f"- Prompts detected: **{stats['prompt_count']}**",
+        f"- True LLM prompts: **{stats['llm_prompt_count']}**",
+        f"- Candidate prompts: **{stats['candidate_prompt_count']}**",
+        f"- False positives avoided: **{stats['false_positives_avoided']}**",
+        f"- Prompts linked to a model: **{stats['prompts_linked_to_model']}**",
+        f"- Strings not linked to a model: **{stats['strings_not_linked_to_model']}**",
+        f"- LLM SDKs detected: **{', '.join(stats['detected_llm_sdks']) or 'none'}**",
+        f"- Model calls detected: **{', '.join(stats['detected_model_calls']) or 'none'}**",
         f"- Estimated static prompt tokens: **{stats['total_static_prompt_tokens']}**",
         f"- Findings: **{stats['finding_count']}**",
         "",
+        "## Classification distribution",
+        "",
+        *[f"- {key}: **{value}**" for key, value in stats["classifications"].items()],
+        "",
+        "## Confidence distribution",
+        "",
+        *[f"- {key}: **{value}**" for key, value in stats["confidence_bands"].items()],
+        "",
+        *([] if stats["detected_llm_sdks"] else ["> **Warning:** No LLM SDK was detected. Candidate strings are not presented as true AI prompts.", ""]),
         "## Findings by severity",
         "",
     ]
@@ -255,6 +277,13 @@ function setMode(m){state.mode=m;localStorage.setItem('tokenoptipy.mode',m);rend
             "</body>",
             REPORT_UI_FIXES + "<!-- edgeFilter compatibility marker --></body>",
         )
+        .replace("data.nodes.filter(n=>n.type==='prompt')", "data.nodes.filter(n=>['prompt','string'].includes(n.type))")
+        .replace("<option value=\"all\">All prompts</option>", "<option value=\"relevant\">LLM &amp; candidate prompts</option><option value=\"all\">All detections</option><option value=\"llm_prompt\">LLM prompts</option><option value=\"candidate_prompt\">Candidate prompts</option><option value=\"developer_message\">Developer messages</option><option value=\"error_message\">Error messages</option><option value=\"log_message\">Log messages</option><option value=\"ui_text\">UI text</option><option value=\"config_text\">Config text</option><option value=\"documentation\">Documentation</option><option value=\"low\">Low-confidence detections</option>")
+        .replace("f==='all'||f==='model'", "f==='all'||f==='relevant'&&['llm_prompt','candidate_prompt'].includes(x.n.attributes?.classification)||f===x.n.attributes?.classification||f==='low'&&(x.n.attributes?.confidence||0)<.5||f==='model'")
+        .replace("<h2>Node types</h2>", "<label class=\"meta\" for=\"minConfidence\">Minimum confidence</label><input id=\"minConfidence\" class=\"control\" type=\"range\" min=\"0\" max=\"1\" step=\"0.05\" value=\"0\"><h2>Node types</h2>")
+        .replace("filtered=items.filter(x=>", "filtered=items.filter(x=>(x.n.attributes?.confidence??1)>=Number(minConfidence.value)&&(")
+        .replace("&&!x.m.model);filtered.sort", "&&!x.m.model));filtered.sort")
+        .replace("promptFilter.onchange=renderList;", "promptFilter.onchange=renderList;minConfidence.oninput=renderList;")
     )
 
 

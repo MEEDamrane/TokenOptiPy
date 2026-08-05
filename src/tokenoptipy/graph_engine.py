@@ -21,6 +21,7 @@ from .python_extractor import (
     term_hashes,
 )
 from .scanner import ProjectFile, project_fingerprint, scan_project
+from .string_classification import classify_candidate, classify_graph_strings
 
 PROMPT_KEY_RE = re.compile(
     r"^(?:"
@@ -73,6 +74,7 @@ def text_prompt_node(item: ProjectFile, text: str, backend: str) -> GraphNode:
             "term_hashes": term_hashes(text),
             "characters": len(text),
             "has_possible_secret": has_secret,
+            **classify_candidate(name=Path(item.relative_path).name, path=item.relative_path, source_kind="prompt_file"),
         },
     )
 
@@ -237,16 +239,17 @@ def build_token_graph(
                 extracted = [
                     (json_path, value)
                     for json_path, value in extract_json_strings(json_value)
-                    if should_extract_json_string(json_path, value)
+                    if should_extract_json_string(json_path, value) or Path(item.relative_path).name.lower() == "package.json"
                 ]
                 for json_path, value in extracted:
                     count = count_tokens(value, backend=backend)
                     preview, has_secret = redact_preview(value)
                     prompt_id = stable_id("prompt", item.relative_path, json_path)
+                    is_candidate = should_extract_json_string(json_path, value)
                     graph.add_node(
                         GraphNode(
                             id=prompt_id,
-                            type="prompt",
+                            type="prompt" if is_candidate else "string",
                             label=f"{Path(item.relative_path).name}:{json_path}",
                             path=item.relative_path,
                             static_tokens=count.tokens,
@@ -260,12 +263,11 @@ def build_token_graph(
                                 "term_hashes": term_hashes(value),
                                 "characters": len(value),
                                 "has_possible_secret": has_secret,
+                                **classify_candidate(name=json_path, path=item.relative_path, source_kind="json_string"),
                             },
                         )
                     )
-                    graph.add_edge(
-                        GraphEdge(f"file:{item.relative_path}", prompt_id, "CONTAINS_PROMPT")
-                    )
+                    graph.add_edge(GraphEdge(f"file:{item.relative_path}", prompt_id, "CONTAINS_PROMPT" if is_candidate else "CONTAINS_STRING"))
                 if extracted:
                     continue
 
@@ -281,6 +283,7 @@ def build_token_graph(
             )
 
     link_file_prompt_references(graph)
+    classify_graph_strings(graph)
     add_duplicate_edges(graph)
     add_graph_findings(graph)
     graph.metadata.update(compute_stats(graph))
@@ -406,7 +409,10 @@ def prompt_flow(graph: TokenGraph, prompt: str) -> dict[str, Any]:
     for path in paths:
         flow_ids.update(path["nodes"])
     flow_nodes = [graph.nodes[item] for item in flow_ids if item in graph.nodes]
+    has_llm = bool(model_calls or any(item.type == "model_call" for item in graph.nodes.values()))
     return {
+        "mode": "Prompt Flow" if has_llm else "Candidate Prompt Flow",
+        "message": None if has_llm else "No LLM flow detected. Showing candidate strings and dynamic context only.",
         "node_id": node.id,
         "prompt_node": node.to_dict(),
         "incoming_edges": [edge.to_dict() for edge in incoming],
@@ -581,6 +587,9 @@ def compute_stats(graph: TokenGraph) -> dict[str, Any]:
     node_types = Counter(node.type for node in graph.nodes.values())
     edge_types = Counter(edge.type for edge in graph.edges)
     prompts = prompt_nodes(graph)
+    classifications = Counter(str(node.attributes.get("classification", "unknown_string")) for node in graph.nodes.values() if node.type in {"prompt", "string"})
+    confidence_bands = Counter("high (0.80-1.00)" if float(node.attributes.get("confidence", 0)) >= .8 else "medium (0.50-0.79)" if float(node.attributes.get("confidence", 0)) >= .5 else "low (0-0.49)" for node in graph.nodes.values() if node.type in {"prompt", "string"})
+    linked = classifications.get("llm_prompt", 0)
     return {
         "node_count": len(graph.nodes),
         "edge_count": len(graph.edges),
@@ -589,6 +598,15 @@ def compute_stats(graph: TokenGraph) -> dict[str, Any]:
         "edge_types": dict(sorted(edge_types.items())),
         "prompt_count": len(prompts),
         "total_static_prompt_tokens": sum(node.static_tokens for node in prompts),
+        "llm_prompt_count": linked,
+        "candidate_prompt_count": classifications.get("candidate_prompt", 0),
+        "false_positives_avoided": sum(value for key, value in classifications.items() if key not in {"llm_prompt", "candidate_prompt"}),
+        "prompts_linked_to_model": linked,
+        "strings_not_linked_to_model": sum(classifications.values()) - linked,
+        "classifications": dict(sorted(classifications.items())),
+        "confidence_bands": dict(sorted(confidence_bands.items())),
+        "detected_llm_sdks": list(graph.metadata.get("detected_llm_sdks", [])),
+        "detected_model_calls": list(graph.metadata.get("detected_model_calls", [])),
     }
 
 
